@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include <reshade.hpp>
 #include <string>
@@ -67,8 +67,8 @@ namespace shadepilot
 
         void on_init_effect_runtime(reshade::api::effect_runtime *runtime);
         void on_destroy_effect_runtime(reshade::api::effect_runtime *runtime);
-        void on_begin_effects(reshade::api::effect_runtime *runtime);
-        void on_finish_effects(reshade::api::effect_runtime *runtime);
+        void on_begin_effects(reshade::api::effect_runtime *runtime, reshade::api::command_list *cmd_list = nullptr, reshade::api::resource_view rtv = { 0 }, reshade::api::resource_view rtv_srgb = { 0 });
+        void on_finish_effects(reshade::api::effect_runtime *runtime, reshade::api::command_list *cmd_list = nullptr, reshade::api::resource_view rtv = { 0 }, reshade::api::resource_view rtv_srgb = { 0 });
         void on_present(reshade::api::effect_runtime *runtime);
 
         bool is_runtime_active() const;
@@ -141,4 +141,3 @@ namespace shadepilot
         std::condition_variable m_capture_cv;
     };
 }
-

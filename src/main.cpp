@@ -1,4 +1,4 @@
-﻿#include "reshade.hpp"
+#include "reshade.hpp"
 #include "version.h"
 #include "reshade_bridge.hpp"
 #include "mcp_server.hpp"
@@ -21,14 +21,14 @@ static void on_destroy_effect_runtime(reshade::api::effect_runtime *runtime)
     shadepilot::ReShadeBridge::instance().on_destroy_effect_runtime(runtime);
 }
 
-static void on_reshade_begin_effects(reshade::api::effect_runtime *runtime, reshade::api::command_list *, reshade::api::resource_view, reshade::api::resource_view)
+static void on_reshade_begin_effects(reshade::api::effect_runtime *runtime, reshade::api::command_list *cmd_list, reshade::api::resource_view rtv, reshade::api::resource_view rtv_srgb)
 {
-    shadepilot::ReShadeBridge::instance().on_begin_effects(runtime);
+    shadepilot::ReShadeBridge::instance().on_begin_effects(runtime, cmd_list, rtv, rtv_srgb);
 }
 
-static void on_reshade_finish_effects(reshade::api::effect_runtime *runtime, reshade::api::command_list *, reshade::api::resource_view, reshade::api::resource_view)
+static void on_reshade_finish_effects(reshade::api::effect_runtime *runtime, reshade::api::command_list *cmd_list, reshade::api::resource_view rtv, reshade::api::resource_view rtv_srgb)
 {
-    shadepilot::ReShadeBridge::instance().on_finish_effects(runtime);
+    shadepilot::ReShadeBridge::instance().on_finish_effects(runtime, cmd_list, rtv, rtv_srgb);
 }
 
 static void on_reshade_present(reshade::api::effect_runtime *runtime)
@@ -93,5 +93,4 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD fdwReason, LPVOID)
     }
     return TRUE;
 }
-
 

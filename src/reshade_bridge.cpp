@@ -1,4 +1,4 @@
-﻿#define NOMINMAX
+#define NOMINMAX
 #define WIN32_LEAN_AND_MEAN
 #include "reshade_bridge.hpp"
 #include <filesystem>
@@ -33,50 +33,208 @@ namespace shadepilot
         reshade::log::message(reshade::log::level::info, "[ShadePilot] Effect runtime destroyed.");
     }
 
-    void ReShadeBridge::on_begin_effects(reshade::api::effect_runtime *runtime)
+    static bool capture_frame_advanced(
+        reshade::api::effect_runtime *runtime,
+        reshade::api::command_list *cmd_list,
+        reshade::api::resource_view rtv,
+        reshade::api::resource_usage current_state,
+        std::vector<uint8_t> &out_pixels,
+        uint32_t &out_width,
+        uint32_t &out_height)
+    {
+        if (runtime == nullptr) return false;
+        reshade::api::device *device = runtime->get_device();
+        if (device == nullptr) return false;
+
+        reshade::api::resource target_resource = { 0 };
+        if (rtv.handle != 0)
+            target_resource = device->get_resource_from_view(rtv);
+        if (target_resource.handle == 0)
+            target_resource = runtime->get_current_back_buffer();
+        if (target_resource.handle == 0)
+            return false;
+
+        const reshade::api::resource_desc desc = device->get_resource_desc(target_resource);
+        if (desc.texture.width == 0 || desc.texture.height == 0)
+            return false;
+
+        out_width = desc.texture.width;
+        out_height = desc.texture.height;
+
+        // Convert sRGB / typeless to default typed (e.g. r8g8b8a8_unorm_srgb = 29 -> r8g8b8a8_unorm = 25)
+        reshade::api::format intermediate_format = reshade::api::format_to_default_typed(desc.texture.format, 0);
+        if (intermediate_format == reshade::api::format::unknown)
+            intermediate_format = reshade::api::format::r8g8b8a8_unorm;
+
+        reshade::api::resource staging_resource = { 0 };
+        reshade::api::resource_desc staging_desc(
+            desc.texture.width, desc.texture.height, 1, 1,
+            intermediate_format,
+            1,
+            reshade::api::memory_heap::readback,
+            reshade::api::resource_usage::copy_dest
+        );
+
+        if (!device->create_resource(staging_desc, nullptr, reshade::api::resource_usage::copy_dest, &staging_resource))
+        {
+            // Fallback: try default capture_screenshot
+            out_pixels.resize(static_cast<size_t>(out_width) * out_height * 4);
+            if (runtime->capture_screenshot(out_pixels.data()))
+                return true;
+            out_pixels.clear();
+            return false;
+        }
+
+        reshade::api::command_queue *queue = runtime->get_command_queue();
+        reshade::api::command_list *copy_cmd = cmd_list;
+        if (copy_cmd == nullptr && queue != nullptr)
+            copy_cmd = queue->get_immediate_command_list();
+
+        if (copy_cmd == nullptr)
+        {
+            device->destroy_resource(staging_resource);
+            return false;
+        }
+
+        copy_cmd->barrier(target_resource, current_state, reshade::api::resource_usage::copy_source);
+        copy_cmd->copy_texture_region(target_resource, 0, nullptr, staging_resource, 0, nullptr);
+        copy_cmd->barrier(target_resource, reshade::api::resource_usage::copy_source, current_state);
+
+        if (queue != nullptr)
+        {
+            reshade::api::fence sync_fence = {};
+            if (device->create_fence(0, reshade::api::fence_flags::none, &sync_fence))
+            {
+                queue->signal(sync_fence, 1);
+                device->wait(sync_fence, 1);
+                device->destroy_fence(sync_fence);
+            }
+            else
+            {
+                queue->wait_idle();
+            }
+        }
+
+        bool success = false;
+        reshade::api::subresource_data mapped_data = {};
+        if (device->map_texture_region(staging_resource, 0, nullptr, reshade::api::map_access::read_only, &mapped_data))
+        {
+            out_pixels.resize(static_cast<size_t>(out_width) * out_height * 4);
+            const auto *mapped_bytes = static_cast<const uint8_t *>(mapped_data.data);
+            uint8_t *dst = out_pixels.data();
+
+            for (size_t y = 0; y < out_height; ++y)
+            {
+                const uint8_t *src_row = mapped_bytes + y * mapped_data.row_pitch;
+                uint8_t *dst_row = dst + y * out_width * 4;
+
+                if (intermediate_format == reshade::api::format::b8g8r8a8_unorm ||
+                    intermediate_format == reshade::api::format::b8g8r8a8_unorm_srgb)
+                {
+                    // BGRA -> RGBA
+                    for (size_t x = 0; x < out_width; ++x)
+                    {
+                        dst_row[x * 4 + 0] = src_row[x * 4 + 2];
+                        dst_row[x * 4 + 1] = src_row[x * 4 + 1];
+                        dst_row[x * 4 + 2] = src_row[x * 4 + 0];
+                        dst_row[x * 4 + 3] = src_row[x * 4 + 3];
+                    }
+                }
+                else if (intermediate_format == reshade::api::format::b8g8r8x8_unorm ||
+                         intermediate_format == reshade::api::format::b8g8r8x8_unorm_srgb)
+                {
+                    // BGRX -> RGBA
+                    for (size_t x = 0; x < out_width; ++x)
+                    {
+                        dst_row[x * 4 + 0] = src_row[x * 4 + 2];
+                        dst_row[x * 4 + 1] = src_row[x * 4 + 1];
+                        dst_row[x * 4 + 2] = src_row[x * 4 + 0];
+                        dst_row[x * 4 + 3] = 0xFF;
+                    }
+                }
+                else if (intermediate_format == reshade::api::format::r8g8b8x8_unorm ||
+                         intermediate_format == reshade::api::format::r8g8b8x8_unorm_srgb)
+                {
+                    for (size_t x = 0; x < out_width; ++x)
+                    {
+                        dst_row[x * 4 + 0] = src_row[x * 4 + 0];
+                        dst_row[x * 4 + 1] = src_row[x * 4 + 1];
+                        dst_row[x * 4 + 2] = src_row[x * 4 + 2];
+                        dst_row[x * 4 + 3] = 0xFF;
+                    }
+                }
+                else if (intermediate_format == reshade::api::format::r10g10b10a2_unorm ||
+                         intermediate_format == reshade::api::format::b10g10r10a2_unorm)
+                {
+                    const auto offset_r = intermediate_format == reshade::api::format::b10g10r10a2_unorm ? 2 : 0;
+                    const auto offset_b = intermediate_format == reshade::api::format::b10g10r10a2_unorm ? 0 : 2;
+                    for (size_t x = 0; x < out_width; ++x)
+                    {
+                        const uint32_t rgba = *reinterpret_cast<const uint32_t *>(src_row + x * 4);
+                        dst_row[x * 4 + offset_r] = ((rgba & 0x000003FFu) / 4) & 0xFF;
+                        dst_row[x * 4 + 1]        = (((rgba & 0x000FFC00u) >> 10) / 4) & 0xFF;
+                        dst_row[x * 4 + offset_b] = (((rgba & 0x3FF00000u) >> 20) / 4) & 0xFF;
+                        dst_row[x * 4 + 3]        = 0xFF;
+                    }
+                }
+                else
+                {
+                    // Handles r8g8b8a8_unorm and r8g8b8a8_unorm_srgb
+                    std::memcpy(dst_row, src_row, out_width * 4);
+                }
+            }
+            device->unmap_texture_region(staging_resource, 0);
+            success = true;
+        }
+
+        device->destroy_resource(staging_resource);
+
+        if (!success)
+        {
+            out_pixels.resize(static_cast<size_t>(out_width) * out_height * 4);
+            if (runtime->capture_screenshot(out_pixels.data()))
+                return true;
+            out_pixels.clear();
+            return false;
+        }
+
+        return true;
+    }
+
+    void ReShadeBridge::on_begin_effects(reshade::api::effect_runtime *runtime, reshade::api::command_list *cmd_list, reshade::api::resource_view rtv, reshade::api::resource_view)
     {
         std::lock_guard<std::mutex> lock(m_capture_mutex);
         if (m_capture_before_requested && runtime != nullptr)
         {
             uint32_t width = 0, height = 0;
-            runtime->get_screenshot_width_and_height(&width, &height);
-            if (width > 0 && height > 0)
+            if (capture_frame_advanced(runtime, cmd_list, rtv, reshade::api::resource_usage::render_target, m_captured_before_pixels, width, height))
             {
-                m_captured_before_pixels.resize(static_cast<size_t>(width) * height * 4);
-                if (runtime->capture_screenshot(m_captured_before_pixels.data()))
-                {
-                    m_captured_width = width;
-                    m_captured_height = height;
-                }
-                else
-                {
-                    m_captured_before_pixels.clear();
-                }
+                m_captured_width = width;
+                m_captured_height = height;
+            }
+            else
+            {
+                m_captured_before_pixels.clear();
             }
             m_capture_before_requested = false;
             m_capture_cv.notify_all();
         }
     }
 
-    void ReShadeBridge::on_finish_effects(reshade::api::effect_runtime *runtime)
+    void ReShadeBridge::on_finish_effects(reshade::api::effect_runtime *runtime, reshade::api::command_list *cmd_list, reshade::api::resource_view rtv, reshade::api::resource_view)
     {
         std::lock_guard<std::mutex> lock(m_capture_mutex);
         if (m_capture_after_requested && runtime != nullptr)
         {
             uint32_t width = 0, height = 0;
-            runtime->get_screenshot_width_and_height(&width, &height);
-            if (width > 0 && height > 0)
+            if (capture_frame_advanced(runtime, cmd_list, rtv, reshade::api::resource_usage::render_target, m_captured_after_pixels, width, height))
             {
-                m_captured_after_pixels.resize(static_cast<size_t>(width) * height * 4);
-                if (runtime->capture_screenshot(m_captured_after_pixels.data()))
-                {
-                    m_captured_width = width;
-                    m_captured_height = height;
-                }
-                else
-                {
-                    m_captured_after_pixels.clear();
-                }
+                m_captured_width = width;
+                m_captured_height = height;
+            }
+            else
+            {
+                m_captured_after_pixels.clear();
             }
             m_capture_after_requested = false;
             m_capture_cv.notify_all();
@@ -715,5 +873,4 @@ namespace shadepilot
         return lines;
     }
 }
-
 
