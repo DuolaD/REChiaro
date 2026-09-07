@@ -1,2 +1,13 @@
-# Ignore Temp directory contents
+﻿# Ignore Temp directory contents
 Temp/
+
+# Build artifacts
+build/
+build32/
+build64/
+out/
+bin/
+.vs/
+*.user
+*.suo
+*.VC.db

@@ -1,0 +1,65 @@
+﻿name: Release ShadePilot Addon
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Release Tag Name (e.g. v1.0.0)'
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Determine Release Tag
+        id: get_tag
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "release" ]; then
+            TAG="${{ github.event.release.tag_name }}"
+          elif [ -n "${{ inputs.tag_name }}" ]; then
+            TAG="${{ inputs.tag_name }}"
+          else
+            TAG="${{ github.ref_name }}"
+          fi
+          echo "TAG_NAME=$TAG" >> $GITHUB_ENV
+          echo "Processing for release tag: $TAG"
+
+      - name: Update Version in src/version.h
+        shell: bash
+        run: |
+          sed -i "s/^#define SHADEPILOT_VERSION \".*\"/#define SHADEPILOT_VERSION \"${TAG_NAME}\"/" src/version.h
+          echo "Updated src/version.h:"
+          cat src/version.h
+
+      - name: Configure CMake (x64)
+        run: |
+          cmake -B build64 -A x64 -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build Addon (x64)
+        run: |
+          cmake --build build64 --config Release
+
+      - name: Configure CMake (Win32)
+        run: |
+          cmake -B build32 -A Win32 -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build Addon (Win32)
+        run: |
+          cmake --build build32 --config Release
+
+      - name: Upload Addons to GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${TAG_NAME}" build64/Release/ShadePilot.addon64 build32/Release/ShadePilot.addon32 --clobber
