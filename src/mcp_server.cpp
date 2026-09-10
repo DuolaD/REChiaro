@@ -1,4 +1,4 @@
-﻿#define WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <winsock2.h>
 #include <ws2tcpip.h>
@@ -90,11 +90,27 @@ namespace shadepilot
             status["status"] = "ok";
             status["server"] = "ShadePilot";
             status["version"] = SHADEPILOT_VERSION;
-            status["runtime_active"] = ReShadeBridge::instance().is_runtime_active();
-            const auto stats = ReShadeBridge::instance().get_stats();
+            status["port"] = m_port.load();
+
+            const auto &bridge = ReShadeBridge::instance();
+            status["process"] = {
+                { "name", bridge.get_process_name() },
+                { "pid", bridge.get_process_id() },
+                { "path", bridge.get_process_path() }
+            };
+
+            status["runtime_active"] = bridge.is_runtime_active();
+            const auto stats = bridge.get_stats();
+            status["render_pipeline"] = stats.pipeline_name.empty() ? "Pending" : stats.pipeline_name;
+            status["api"] = stats.api_name.empty() ? "Pending" : stats.api_name;
+            status["device"] = stats.device_name;
             status["fps"] = stats.fps;
             status["resolution"] = std::to_string(stats.width) + "x" + std::to_string(stats.height);
-            status["api"] = stats.api_name;
+            status["active_clients"] = m_client_counter.load();
+            status["endpoints"] = {
+                { "sse", "http://127.0.0.1:" + std::to_string(m_port.load()) + "/sse" },
+                { "message", "http://127.0.0.1:" + std::to_string(m_port.load()) + "/message" }
+            };
 
             res.set_content(status.dump(2), "application/json");
         });
@@ -155,10 +171,41 @@ namespace shadepilot
         svr.Post("/message", handle_post_message);
         svr.Post("/mcp", handle_post_message);
 
-        reshade::log::message(reshade::log::level::info,
-            ("[ShadePilot] MCP Server listening on http://127.0.0.1:" + std::to_string(m_port.load())).c_str());
+        uint16_t base_port = m_port.load();
+        constexpr int MAX_PORT_ATTEMPTS = 20;
+        uint16_t bound_port = 0;
 
-        svr.listen("127.0.0.1", m_port.load());
+        for (int i = 0; i < MAX_PORT_ATTEMPTS; ++i)
+        {
+            uint16_t test_port = base_port + i;
+            if (svr.bind_to_port("127.0.0.1", test_port))
+            {
+                bound_port = test_port;
+                m_port = bound_port;
+                if (i > 0)
+                {
+                    reshade::log::message(reshade::log::level::warning,
+                        ("[ShadePilot] Port " + std::to_string(base_port) +
+                         " is in use. Auto-fallback to port " + std::to_string(bound_port)).c_str());
+                }
+                break;
+            }
+            svr.stop();
+        }
+
+        if (bound_port == 0)
+        {
+            reshade::log::message(reshade::log::level::error,
+                ("[ShadePilot] Failed to bind to any port in range [" +
+                 std::to_string(base_port) + " - " + std::to_string(base_port + MAX_PORT_ATTEMPTS - 1) + "]. MCP server aborted.").c_str());
+            m_running = false;
+            return;
+        }
+
+        reshade::log::message(reshade::log::level::info,
+            ("[ShadePilot] MCP Server listening on http://127.0.0.1:" + std::to_string(bound_port)).c_str());
+
+        svr.listen_after_bind();
         m_running = false;
     }
 
@@ -545,13 +592,23 @@ namespace shadepilot
 
     nlohmann::json MCPServer::tool_get_stats(const nlohmann::json &)
     {
-        const auto stats = ReShadeBridge::instance().get_stats();
+        const auto &bridge = ReShadeBridge::instance();
+        const auto stats = bridge.get_stats();
         nlohmann::json j = {
-            { "api", stats.api_name },
+            { "render_pipeline", stats.pipeline_name.empty() ? "Pending" : stats.pipeline_name },
+            { "api", stats.api_name.empty() ? "Pending" : stats.api_name },
+            { "device", stats.device_name },
             { "fps", stats.fps },
             { "frame_time_ms", stats.frame_time_ms },
             { "resolution", std::to_string(stats.width) + "x" + std::to_string(stats.height) },
-            { "frame_count", stats.frame_count }
+            { "frame_count", stats.frame_count },
+            { "port", m_port.load() },
+            { "process", {
+                { "name", bridge.get_process_name() },
+                { "pid", bridge.get_process_id() },
+                { "path", bridge.get_process_path() }
+            } },
+            { "runtime_active", bridge.is_runtime_active() }
         };
 
         return {

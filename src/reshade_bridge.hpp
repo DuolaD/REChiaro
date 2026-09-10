@@ -15,6 +15,7 @@ namespace shadepilot
     struct FrameStats
     {
         std::string api_name;
+        std::string pipeline_name;
         std::string device_name;
         uint32_t width = 0;
         uint32_t height = 0;
@@ -114,10 +115,15 @@ namespace shadepilot
 
         std::vector<std::string> get_recent_logs(size_t max_lines = 100, bool errors_only = false);
 
+        std::string get_process_name() const;
+        std::string get_process_path() const;
+        uint32_t get_process_id() const;
+
     private:
         ReShadeBridge() = default;
         ~ReShadeBridge() = default;
 
+        void update_device_info(reshade::api::effect_runtime *runtime);
         void process_task_queue(reshade::api::effect_runtime *runtime);
 
         mutable std::mutex m_runtime_mutex;

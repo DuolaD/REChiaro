@@ -1,4 +1,4 @@
-﻿# ShadePilot 🎮🎨
+# ShadePilot 🎮🎨
 
 [![Release ShadePilot Addon](https://github.com/DuolaD/RE_MCP/actions/workflows/release.yml/badge.svg)](https://github.com/DuolaD/RE_MCP/actions/workflows/release.yml)
 [![ReShade API v20](https://img.shields.io/badge/ReShade_API-v20-brightgreen.svg)](https://reshade.me)
@@ -39,11 +39,17 @@
 3. 切换到顶部的 **“插件 (Add-ons)”** 一栏，即可看到 **ShadePilot**。
 4. 默认情况下插件会自动在后台启动本地 MCP 服务，监听端口：`39800`。
 
-> 💡 **自定义端口**：如需更改端口，可在游戏目录下的 `ReShade.ini` 中添加：
+> 💡 **多实例与端口自动顺延（Auto-increment Fallback）**：
+> 当您同时多开游戏客户端时，ShadePilot 会自动检测端口占用情况。若默认端口 `39800` 已被首个实例使用，后续实例将自动顺延绑定至 `39801`、`39802` 等可用端口。
+>
+> 💡 **自定义端口**：如需自定义起始端口，可在游戏目录下的 `ReShade.ini` 中添加：
 > ```ini
 > [SHADEPILOT]
 > Port = 39800
 > ```
+>
+> 💡 **健康检查与渲染管线诊断**：
+> 访问 `http://127.0.0.1:39800/health` 可直接获取诊断 JSON，包含当前生效的渲染管线（`DX11`/`DX12`/`Vulkan`/`OpenGL` 等）、GPU 显卡型号、游戏进程名（PID）、帧率及当前分配的端口。
 
 ---
 

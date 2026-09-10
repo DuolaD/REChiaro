@@ -22,6 +22,7 @@ namespace shadepilot
     {
         std::lock_guard<std::mutex> lock(m_runtime_mutex);
         m_current_runtime = runtime;
+        update_device_info(runtime);
         reshade::log::message(reshade::log::level::info, "[ShadePilot] Effect runtime initialized.");
     }
 
@@ -241,6 +242,55 @@ namespace shadepilot
         }
     }
 
+    void ReShadeBridge::update_device_info(reshade::api::effect_runtime *runtime)
+    {
+        if (runtime == nullptr)
+            return;
+
+        reshade::api::device *dev = runtime->get_device();
+        if (dev == nullptr)
+            return;
+
+        std::lock_guard<std::mutex> lock(m_stats_mutex);
+        switch (dev->get_api())
+        {
+        case reshade::api::device_api::d3d9:
+            m_stats.api_name = "Direct3D 9";
+            m_stats.pipeline_name = "DX9";
+            break;
+        case reshade::api::device_api::d3d10:
+            m_stats.api_name = "Direct3D 10";
+            m_stats.pipeline_name = "DX10";
+            break;
+        case reshade::api::device_api::d3d11:
+            m_stats.api_name = "Direct3D 11";
+            m_stats.pipeline_name = "DX11";
+            break;
+        case reshade::api::device_api::d3d12:
+            m_stats.api_name = "Direct3D 12";
+            m_stats.pipeline_name = "DX12";
+            break;
+        case reshade::api::device_api::opengl:
+            m_stats.api_name = "OpenGL";
+            m_stats.pipeline_name = "OpenGL";
+            break;
+        case reshade::api::device_api::vulkan:
+            m_stats.api_name = "Vulkan";
+            m_stats.pipeline_name = "Vulkan";
+            break;
+        default:
+            m_stats.api_name = "Unknown";
+            m_stats.pipeline_name = "Unknown";
+            break;
+        }
+
+        char desc_buf[256] = {};
+        if (dev->get_property(reshade::api::device_properties::description, desc_buf))
+        {
+            m_stats.device_name = desc_buf;
+        }
+    }
+
     void ReShadeBridge::on_present(reshade::api::effect_runtime *runtime)
     {
         // Update stats
@@ -261,23 +311,10 @@ namespace shadepilot
                 runtime->get_screenshot_width_and_height(&w, &h);
                 m_stats.width = w;
                 m_stats.height = h;
-
-                reshade::api::device *dev = runtime->get_device();
-                if (dev != nullptr)
-                {
-                    switch (dev->get_api())
-                    {
-                    case reshade::api::device_api::d3d9: m_stats.api_name = "Direct3D 9"; break;
-                    case reshade::api::device_api::d3d10: m_stats.api_name = "Direct3D 10"; break;
-                    case reshade::api::device_api::d3d11: m_stats.api_name = "Direct3D 11"; break;
-                    case reshade::api::device_api::d3d12: m_stats.api_name = "Direct3D 12"; break;
-                    case reshade::api::device_api::opengl: m_stats.api_name = "OpenGL"; break;
-                    case reshade::api::device_api::vulkan: m_stats.api_name = "Vulkan"; break;
-                    default: m_stats.api_name = "Unknown"; break;
-                    }
-                }
             }
         }
+
+        update_device_info(runtime);
 
         // Process scheduled tasks on render thread
         process_task_queue(runtime);
@@ -871,6 +908,33 @@ namespace shadepilot
             lines.erase(lines.begin(), lines.end() - max_lines);
 
         return lines;
+    }
+
+    std::string ReShadeBridge::get_process_name() const
+    {
+        char path[MAX_PATH] = {};
+        if (::GetModuleFileNameA(NULL, path, MAX_PATH))
+        {
+            const char *slash = std::strrchr(path, '\\');
+            if (!slash) slash = std::strrchr(path, '/');
+            return slash ? (slash + 1) : path;
+        }
+        return "Unknown";
+    }
+
+    std::string ReShadeBridge::get_process_path() const
+    {
+        char path[MAX_PATH] = {};
+        if (::GetModuleFileNameA(NULL, path, MAX_PATH))
+        {
+            return path;
+        }
+        return "";
+    }
+
+    uint32_t ReShadeBridge::get_process_id() const
+    {
+        return static_cast<uint32_t>(::GetCurrentProcessId());
     }
 }
 
