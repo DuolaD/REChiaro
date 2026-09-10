@@ -29,7 +29,10 @@ namespace shadepilot
     bool MCPServer::start(uint16_t port)
     {
         if (m_running.load())
-            return true;
+            stop();
+
+        if (m_worker_thread.joinable())
+            m_worker_thread.join();
 
         m_port = port;
         m_running = true;
@@ -39,21 +42,27 @@ namespace shadepilot
 
     void MCPServer::stop()
     {
-        if (!m_running.load())
-            return;
-
-        m_running = false;
-        // Connect locally to trigger unblock if needed
-        try
+        if (m_running.load())
         {
-            httplib::Client cli("127.0.0.1", m_port.load());
-            cli.set_connection_timeout(0, 100000);
-            cli.Get("/shutdown");
+            m_running = false;
+            // Connect locally to trigger unblock if needed
+            try
+            {
+                httplib::Client cli("127.0.0.1", m_port.load());
+                cli.set_connection_timeout(0, 100000);
+                cli.Get("/shutdown");
+            }
+            catch (...) {}
         }
-        catch (...) {}
 
         if (m_worker_thread.joinable())
             m_worker_thread.join();
+    }
+
+    bool MCPServer::restart(uint16_t port)
+    {
+        stop();
+        return start(port);
     }
 
     bool MCPServer::is_running() const
@@ -71,9 +80,40 @@ namespace shadepilot
         return m_client_counter.load();
     }
 
+    static bool is_tcp_port_free(uint16_t port)
+    {
+#ifdef _WIN32
+        SOCKET s = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+        if (s == INVALID_SOCKET)
+            return false;
+
+        int opt = 1;
+        ::setsockopt(s, SOL_SOCKET, SO_EXCLUSIVEADDRUSE, reinterpret_cast<const char*>(&opt), sizeof(opt));
+
+        sockaddr_in addr = {};
+        addr.sin_family = AF_INET;
+        addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        addr.sin_port = htons(port);
+
+        int res = ::bind(s, reinterpret_cast<sockaddr*>(&addr), sizeof(addr));
+        ::closesocket(s);
+        return (res == 0);
+#else
+        return true;
+#endif
+    }
+
     void MCPServer::server_worker()
     {
         httplib::Server svr;
+
+        // Force exclusive address binding on Windows to prevent port sharing/stealing
+        svr.set_socket_options([](socket_t sock) {
+#ifdef _WIN32
+            int opt = 1;
+            ::setsockopt(sock, SOL_SOCKET, SO_EXCLUSIVEADDRUSE, reinterpret_cast<const char*>(&opt), sizeof(opt));
+#endif
+        });
 
         svr.set_default_headers({
             { "Access-Control-Allow-Origin", "*" },
@@ -178,6 +218,11 @@ namespace shadepilot
         for (int i = 0; i < MAX_PORT_ATTEMPTS; ++i)
         {
             uint16_t test_port = base_port + i;
+            if (!is_tcp_port_free(test_port))
+            {
+                continue;
+            }
+
             if (svr.bind_to_port("127.0.0.1", test_port))
             {
                 bound_port = test_port;

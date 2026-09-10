@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include <string>
 #include <thread>
@@ -17,6 +17,7 @@ namespace shadepilot
 
         bool start(uint16_t port = 39800);
         void stop();
+        bool restart(uint16_t port);
         bool is_running() const;
         uint16_t get_port() const;
         size_t get_active_client_count() const;
