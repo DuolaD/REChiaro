@@ -83,6 +83,15 @@ static void draw_settings_overlay(reshade::api::effect_runtime *)
         bridge.get_process_id(),
         server.get_active_client_count());
 
+    ImGui::Text("ReShade State:   Effects: %s | Perf Mode: %s",
+        stats.effects_enabled ? "Enabled" : "Disabled",
+        stats.performance_mode ? "ON" : "OFF");
+
+    if (!stats.current_preset.empty())
+    {
+        ImGui::Text("Active Preset:   %s", stats.current_preset.c_str());
+    }
+
     ImGui::Spacing();
 
     // 4. Port Configuration & Control

@@ -40,6 +40,14 @@ namespace shadepilot
         nlohmann::json tool_get_preprocessor_definitions(const nlohmann::json &args);
         nlohmann::json tool_set_preprocessor_definition(const nlohmann::json &args);
         nlohmann::json tool_save_preset(const nlohmann::json &args);
+        nlohmann::json tool_load_preset(const nlohmann::json &args);
+        nlohmann::json tool_get_current_preset(const nlohmann::json &args);
+        nlohmann::json tool_set_performance_mode(const nlohmann::json &args);
+        nlohmann::json tool_get_performance_mode(const nlohmann::json &args);
+        nlohmann::json tool_reload_effects(const nlohmann::json &args);
+        nlohmann::json tool_set_effects_state(const nlohmann::json &args);
+        nlohmann::json tool_get_effects_state(const nlohmann::json &args);
+        nlohmann::json tool_set_overlay_state(const nlohmann::json &args);
         nlohmann::json tool_list_addons(const nlohmann::json &args);
         nlohmann::json tool_set_addon_state(const nlohmann::json &args);
         nlohmann::json tool_get_config(const nlohmann::json &args);

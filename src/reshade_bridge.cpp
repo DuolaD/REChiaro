@@ -311,6 +311,17 @@ namespace shadepilot
                 runtime->get_screenshot_width_and_height(&w, &h);
                 m_stats.width = w;
                 m_stats.height = h;
+
+                m_stats.effects_enabled = runtime->get_effects_state();
+
+                char preset_buf[1024] = {};
+                size_t preset_sz = sizeof(preset_buf);
+                runtime->get_current_preset_path(preset_buf, &preset_sz);
+                m_stats.current_preset = preset_buf;
+
+                bool perf = false;
+                if (reshade::get_config_value(runtime, "GENERAL", "PerformanceMode", perf))
+                    m_stats.performance_mode = perf;
             }
         }
 
@@ -755,6 +766,142 @@ namespace shadepilot
         return false;
     }
 
+    bool ReShadeBridge::load_preset(const std::string &preset_path)
+    {
+        auto fut = execute_on_render_thread([this, preset_path](reshade::api::effect_runtime *runtime) -> bool {
+            if (runtime == nullptr) return false;
+            runtime->set_current_preset_path(preset_path.c_str());
+            {
+                std::lock_guard<std::mutex> lock(m_stats_mutex);
+                m_stats.current_preset = preset_path;
+            }
+            return true;
+        });
+
+        if (fut.wait_for(std::chrono::milliseconds(2000)) == std::future_status::ready)
+            return fut.get();
+        return false;
+    }
+
+    std::string ReShadeBridge::get_current_preset_path()
+    {
+        auto fut = execute_on_render_thread([](reshade::api::effect_runtime *runtime) -> std::string {
+            if (runtime == nullptr) return "";
+            char buf[1024] = {};
+            size_t sz = sizeof(buf);
+            runtime->get_current_preset_path(buf, &sz);
+            return std::string(buf);
+        });
+
+        if (fut.wait_for(std::chrono::milliseconds(1000)) == std::future_status::ready)
+            return fut.get();
+
+        std::lock_guard<std::mutex> lock(m_stats_mutex);
+        return m_stats.current_preset;
+    }
+
+    bool ReShadeBridge::set_performance_mode(bool enabled)
+    {
+        auto fut = execute_on_render_thread([this, enabled](reshade::api::effect_runtime *runtime) -> bool {
+            if (runtime != nullptr)
+            {
+                reshade::set_config_value(runtime, "GENERAL", "PerformanceMode", enabled ? "1" : "0");
+                runtime->reload_effect_next_frame(nullptr);
+            }
+            else
+            {
+                reshade::set_config_value(nullptr, "GENERAL", "PerformanceMode", enabled ? "1" : "0");
+            }
+            {
+                std::lock_guard<std::mutex> lock(m_stats_mutex);
+                m_stats.performance_mode = enabled;
+            }
+            return true;
+        });
+
+        if (fut.wait_for(std::chrono::milliseconds(2000)) == std::future_status::ready)
+            return fut.get();
+
+        reshade::set_config_value(nullptr, "GENERAL", "PerformanceMode", enabled ? "1" : "0");
+        {
+            std::lock_guard<std::mutex> lock(m_stats_mutex);
+            m_stats.performance_mode = enabled;
+        }
+        return true;
+    }
+
+    bool ReShadeBridge::get_performance_mode()
+    {
+        reshade::api::effect_runtime *rt = nullptr;
+        {
+            std::lock_guard<std::mutex> lock(m_runtime_mutex);
+            rt = m_current_runtime;
+        }
+        bool enabled = false;
+        if (reshade::get_config_value(rt, "GENERAL", "PerformanceMode", enabled))
+            return enabled;
+        if (rt != nullptr && reshade::get_config_value(nullptr, "GENERAL", "PerformanceMode", enabled))
+            return enabled;
+        std::lock_guard<std::mutex> lock(m_stats_mutex);
+        return m_stats.performance_mode;
+    }
+
+    bool ReShadeBridge::reload_effects(const std::string &effect_name)
+    {
+        auto fut = execute_on_render_thread([effect_name](reshade::api::effect_runtime *runtime) -> bool {
+            if (runtime == nullptr) return false;
+            runtime->reload_effect_next_frame(effect_name.empty() ? nullptr : effect_name.c_str());
+            return true;
+        });
+
+        if (fut.wait_for(std::chrono::milliseconds(2000)) == std::future_status::ready)
+            return fut.get();
+        return false;
+    }
+
+    bool ReShadeBridge::set_effects_state(bool enabled)
+    {
+        auto fut = execute_on_render_thread([this, enabled](reshade::api::effect_runtime *runtime) -> bool {
+            if (runtime == nullptr) return false;
+            runtime->set_effects_state(enabled);
+            {
+                std::lock_guard<std::mutex> lock(m_stats_mutex);
+                m_stats.effects_enabled = enabled;
+            }
+            return true;
+        });
+
+        if (fut.wait_for(std::chrono::milliseconds(2000)) == std::future_status::ready)
+            return fut.get();
+        return false;
+    }
+
+    bool ReShadeBridge::get_effects_state()
+    {
+        auto fut = execute_on_render_thread([](reshade::api::effect_runtime *runtime) -> bool {
+            if (runtime == nullptr) return false;
+            return runtime->get_effects_state();
+        });
+
+        if (fut.wait_for(std::chrono::milliseconds(1000)) == std::future_status::ready)
+            return fut.get();
+
+        std::lock_guard<std::mutex> lock(m_stats_mutex);
+        return m_stats.effects_enabled;
+    }
+
+    bool ReShadeBridge::set_overlay_state(bool open)
+    {
+        auto fut = execute_on_render_thread([open](reshade::api::effect_runtime *runtime) -> bool {
+            if (runtime == nullptr) return false;
+            return runtime->open_overlay(open, reshade::api::input_source::keyboard);
+        });
+
+        if (fut.wait_for(std::chrono::milliseconds(2000)) == std::future_status::ready)
+            return fut.get();
+        return false;
+    }
+
     std::vector<AddonInfo> ReShadeBridge::list_addons()
     {
         std::vector<AddonInfo> list;
@@ -866,13 +1013,55 @@ namespace shadepilot
     {
         char val[1024] = {};
         size_t sz = sizeof(val);
-        if (reshade::get_config_value(nullptr, section.c_str(), key.c_str(), val, &sz))
+        reshade::api::effect_runtime *rt = nullptr;
+        {
+            std::lock_guard<std::mutex> lock(m_runtime_mutex);
+            rt = m_current_runtime;
+        }
+        if (reshade::get_config_value(rt, section.c_str(), key.c_str(), val, &sz))
+            return std::string(val);
+        if (rt != nullptr && reshade::get_config_value(nullptr, section.c_str(), key.c_str(), val, &sz))
             return std::string(val);
         return "";
     }
 
     bool ReShadeBridge::set_config(const std::string &section, const std::string &key, const std::string &value)
     {
+        auto fut = execute_on_render_thread([this, section, key, value](reshade::api::effect_runtime *runtime) -> bool {
+            reshade::set_config_value(runtime, section.c_str(), key.c_str(), value.c_str());
+            if (runtime == nullptr)
+            {
+                reshade::set_config_value(nullptr, section.c_str(), key.c_str(), value.c_str());
+                return true;
+            }
+
+            // Intelligent side-effect dispatch
+            if (section == "GENERAL")
+            {
+                if (key == "PerformanceMode")
+                {
+                    const bool enabled = (value == "1" || value == "true" || value == "TRUE");
+                    runtime->reload_effect_next_frame(nullptr);
+                    std::lock_guard<std::mutex> lock(m_stats_mutex);
+                    m_stats.performance_mode = enabled;
+                }
+                else if (key == "PresetPath")
+                {
+                    runtime->set_current_preset_path(value.c_str());
+                    std::lock_guard<std::mutex> lock(m_stats_mutex);
+                    m_stats.current_preset = value;
+                }
+                else if (key == "EffectSearchPaths" || key == "TextureSearchPaths" || key == "PreprocessorDefinitions" || key == "SkipLoadingDisabledEffects")
+                {
+                    runtime->reload_effect_next_frame(nullptr);
+                }
+            }
+            return true;
+        });
+
+        if (fut.wait_for(std::chrono::milliseconds(2000)) == std::future_status::ready)
+            return fut.get();
+
         reshade::set_config_value(nullptr, section.c_str(), key.c_str(), value.c_str());
         return true;
     }

@@ -146,6 +146,9 @@ namespace shadepilot
             status["device"] = stats.device_name;
             status["fps"] = stats.fps;
             status["resolution"] = std::to_string(stats.width) + "x" + std::to_string(stats.height);
+            status["performance_mode"] = stats.performance_mode;
+            status["effects_enabled"] = stats.effects_enabled;
+            status["current_preset"] = stats.current_preset;
             status["active_clients"] = m_client_counter.load();
             status["endpoints"] = {
                 { "sse", "http://127.0.0.1:" + std::to_string(m_port.load()) + "/sse" },
@@ -320,6 +323,22 @@ namespace shadepilot
                     resp["result"] = tool_set_preprocessor_definition(args);
                 else if (tool_name == "shadepilot_save_preset")
                     resp["result"] = tool_save_preset(args);
+                else if (tool_name == "shadepilot_load_preset")
+                    resp["result"] = tool_load_preset(args);
+                else if (tool_name == "shadepilot_get_current_preset")
+                    resp["result"] = tool_get_current_preset(args);
+                else if (tool_name == "shadepilot_set_performance_mode")
+                    resp["result"] = tool_set_performance_mode(args);
+                else if (tool_name == "shadepilot_get_performance_mode")
+                    resp["result"] = tool_get_performance_mode(args);
+                else if (tool_name == "shadepilot_reload_effects")
+                    resp["result"] = tool_reload_effects(args);
+                else if (tool_name == "shadepilot_set_effects_state")
+                    resp["result"] = tool_set_effects_state(args);
+                else if (tool_name == "shadepilot_get_effects_state")
+                    resp["result"] = tool_get_effects_state(args);
+                else if (tool_name == "shadepilot_set_overlay_state")
+                    resp["result"] = tool_set_overlay_state(args);
                 else if (tool_name == "shadepilot_list_addons")
                     resp["result"] = tool_list_addons(args);
                 else if (tool_name == "shadepilot_set_addon_state")
@@ -571,6 +590,104 @@ namespace shadepilot
         };
     }
 
+    nlohmann::json MCPServer::tool_load_preset(const nlohmann::json &args)
+    {
+        const std::string preset_path = args.value("preset_path", "");
+        if (preset_path.empty())
+        {
+            return {
+                { "content", { { { "type", "text" }, { "text", "Missing required argument 'preset_path'." } } } },
+                { "isError", true }
+            };
+        }
+
+        const bool ok = ReShadeBridge::instance().load_preset(preset_path);
+        return {
+            { "content", {
+                { { "type", "text" }, { "text", ok ? ("Switched active preset to: " + preset_path) : "Failed to switch preset." } }
+            } },
+            { "isError", !ok }
+        };
+    }
+
+    nlohmann::json MCPServer::tool_get_current_preset(const nlohmann::json &)
+    {
+        const std::string preset_path = ReShadeBridge::instance().get_current_preset_path();
+        return {
+            { "content", {
+                { { "type", "text" }, { "text", preset_path.empty() ? "No preset active." : preset_path } }
+            } }
+        };
+    }
+
+    nlohmann::json MCPServer::tool_set_performance_mode(const nlohmann::json &args)
+    {
+        const bool enabled = args.value("enabled", true);
+        const bool ok = ReShadeBridge::instance().set_performance_mode(enabled);
+        return {
+            { "content", {
+                { { "type", "text" }, { "text", ok ? (std::string("Performance Mode ") + (enabled ? "enabled" : "disabled") + " and effects reloaded.") : "Failed to set Performance Mode." } }
+            } },
+            { "isError", !ok }
+        };
+    }
+
+    nlohmann::json MCPServer::tool_get_performance_mode(const nlohmann::json &)
+    {
+        const bool enabled = ReShadeBridge::instance().get_performance_mode();
+        return {
+            { "content", {
+                { { "type", "text" }, { "text", enabled ? "true" : "false" } }
+            } }
+        };
+    }
+
+    nlohmann::json MCPServer::tool_reload_effects(const nlohmann::json &args)
+    {
+        const std::string effect_name = args.value("effect_name", "");
+        const bool ok = ReShadeBridge::instance().reload_effects(effect_name);
+        return {
+            { "content", {
+                { { "type", "text" }, { "text", ok ? (effect_name.empty() ? "All effects queued for reload next frame." : ("Effect '" + effect_name + "' queued for reload next frame.")) : "Failed to queue effect reload." } }
+            } },
+            { "isError", !ok }
+        };
+    }
+
+    nlohmann::json MCPServer::tool_set_effects_state(const nlohmann::json &args)
+    {
+        const bool enabled = args.value("enabled", true);
+        const bool ok = ReShadeBridge::instance().set_effects_state(enabled);
+        return {
+            { "content", {
+                { { "type", "text" }, { "text", ok ? (std::string("Global effects ") + (enabled ? "enabled." : "disabled.")) : "Failed to set global effects state." } }
+            } },
+            { "isError", !ok }
+        };
+    }
+
+    nlohmann::json MCPServer::tool_get_effects_state(const nlohmann::json &)
+    {
+        const bool enabled = ReShadeBridge::instance().get_effects_state();
+        return {
+            { "content", {
+                { { "type", "text" }, { "text", enabled ? "true" : "false" } }
+            } }
+        };
+    }
+
+    nlohmann::json MCPServer::tool_set_overlay_state(const nlohmann::json &args)
+    {
+        const bool open = args.value("open", true);
+        const bool ok = ReShadeBridge::instance().set_overlay_state(open);
+        return {
+            { "content", {
+                { { "type", "text" }, { "text", ok ? (std::string("Overlay ") + (open ? "opened." : "closed.")) : "Failed to set overlay state." } }
+            } },
+            { "isError", !ok }
+        };
+    }
+
     nlohmann::json MCPServer::tool_list_addons(const nlohmann::json &)
     {
         const auto addons = ReShadeBridge::instance().list_addons();
@@ -647,6 +764,9 @@ namespace shadepilot
             { "frame_time_ms", stats.frame_time_ms },
             { "resolution", std::to_string(stats.width) + "x" + std::to_string(stats.height) },
             { "frame_count", stats.frame_count },
+            { "performance_mode", stats.performance_mode },
+            { "effects_enabled", stats.effects_enabled },
+            { "current_preset", stats.current_preset },
             { "port", m_port.load() },
             { "process", {
                 { "name", bridge.get_process_name() },
@@ -792,6 +912,75 @@ namespace shadepilot
                 { "name", "shadepilot_save_preset" },
                 { "description", "Saves all currently active shader technique states and uniform variable modifications to the active preset ini file on disk." },
                 { "inputSchema", { { "type", "object" } } }
+            },
+            {
+                { "name", "shadepilot_load_preset" },
+                { "description", "Switches the active ReShade preset to the specified preset file path and applies its settings immediately." },
+                { "inputSchema", {
+                    { "type", "object" },
+                    { "required", { "preset_path" } },
+                    { "properties", {
+                        { "preset_path", { { "type", "string" }, { "description", "Absolute or relative file path to the preset (.ini or .txt)." } } }
+                    } }
+                } }
+            },
+            {
+                { "name", "shadepilot_get_current_preset" },
+                { "description", "Gets the file path of the currently active ReShade preset." },
+                { "inputSchema", { { "type", "object" } } }
+            },
+            {
+                { "name", "shadepilot_set_performance_mode" },
+                { "description", "Enables or disables ReShade's Performance Mode and immediately triggers shader recompilation without restarting the game." },
+                { "inputSchema", {
+                    { "type", "object" },
+                    { "required", { "enabled" } },
+                    { "properties", {
+                        { "enabled", { { "type", "boolean" }, { "description", "True to enable performance mode, false for normal/tweaking mode." } } }
+                    } }
+                } }
+            },
+            {
+                { "name", "shadepilot_get_performance_mode" },
+                { "description", "Checks whether ReShade is currently in Performance Mode." },
+                { "inputSchema", { { "type", "object" } } }
+            },
+            {
+                { "name", "shadepilot_reload_effects" },
+                { "description", "Queues an effect or all effects for hot-reloading and recompiling in the next frame." },
+                { "inputSchema", {
+                    { "type", "object" },
+                    { "properties", {
+                        { "effect_name", { { "type", "string" }, { "default", "" }, { "description", "Optional effect filename (e.g. 'SMAA.fx'). Leave empty to reload all effects." } } }
+                    } }
+                } }
+            },
+            {
+                { "name", "shadepilot_set_effects_state" },
+                { "description", "Enables or disables all ReShade post-processing effects globally (equivalent to the master effects toggle key)." },
+                { "inputSchema", {
+                    { "type", "object" },
+                    { "required", { "enabled" } },
+                    { "properties", {
+                        { "enabled", { { "type", "boolean" }, { "description", "True to enable effects rendering, false to disable all effects." } } }
+                    } }
+                } }
+            },
+            {
+                { "name", "shadepilot_get_effects_state" },
+                { "description", "Gets the current global effects rendering state (whether effects are enabled or disabled)." },
+                { "inputSchema", { { "type", "object" } } }
+            },
+            {
+                { "name", "shadepilot_set_overlay_state" },
+                { "description", "Opens or closes ReShade's native in-game overlay menu." },
+                { "inputSchema", {
+                    { "type", "object" },
+                    { "required", { "open" } },
+                    { "properties", {
+                        { "open", { { "type", "boolean" }, { "description", "True to open the overlay, false to close it." } } }
+                    } }
+                } }
             },
             {
                 { "name", "shadepilot_list_addons" },

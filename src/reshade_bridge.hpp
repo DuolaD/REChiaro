@@ -22,6 +22,9 @@ namespace shadepilot
         float fps = 0.0f;
         float frame_time_ms = 0.0f;
         uint64_t frame_count = 0;
+        bool performance_mode = false;
+        bool effects_enabled = true;
+        std::string current_preset;
     };
 
     struct TechniqueInfo
@@ -106,6 +109,18 @@ namespace shadepilot
         bool set_preprocessor_definition(const std::string &effect_name, const std::string &name, const std::string &value);
 
         bool save_current_preset();
+        bool load_preset(const std::string &preset_path);
+        std::string get_current_preset_path();
+
+        bool set_performance_mode(bool enabled);
+        bool get_performance_mode();
+
+        bool reload_effects(const std::string &effect_name = "");
+
+        bool set_effects_state(bool enabled);
+        bool get_effects_state();
+
+        bool set_overlay_state(bool open);
 
         std::vector<AddonInfo> list_addons();
         bool set_addon_state(const std::string &addon_name, bool enabled);
