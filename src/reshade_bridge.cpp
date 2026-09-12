@@ -325,6 +325,26 @@ namespace shadepilot
             }
         }
 
+        // Capture overlay frame if requested (rendered after ImGui overlay drawing)
+        {
+            std::lock_guard<std::mutex> lock(m_capture_mutex);
+            if (m_capture_overlay_requested && runtime != nullptr)
+            {
+                uint32_t width = 0, height = 0;
+                if (capture_frame_advanced(runtime, nullptr, { 0 }, reshade::api::resource_usage::present, m_captured_overlay_pixels, width, height))
+                {
+                    m_captured_width = width;
+                    m_captured_height = height;
+                }
+                else
+                {
+                    m_captured_overlay_pixels.clear();
+                }
+                m_capture_overlay_requested = false;
+                m_capture_cv.notify_all();
+            }
+        }
+
         update_device_info(runtime);
 
         // Process scheduled tasks on render thread
@@ -367,12 +387,16 @@ namespace shadepilot
             std::unique_lock<std::mutex> lock(m_capture_mutex);
             if (stage == "before")
                 m_capture_before_requested = true;
+            else if (stage == "overlay" || stage == "ui" || stage == "present")
+                m_capture_overlay_requested = true;
             else
                 m_capture_after_requested = true;
 
             const bool finished = m_capture_cv.wait_for(lock, std::chrono::milliseconds(2500), [&]() {
                 if (stage == "before")
                     return !m_capture_before_requested;
+                else if (stage == "overlay" || stage == "ui" || stage == "present")
+                    return !m_capture_overlay_requested;
                 else
                     return !m_capture_after_requested;
             });
@@ -381,11 +405,14 @@ namespace shadepilot
             {
                 m_capture_before_requested = false;
                 m_capture_after_requested = false;
+                m_capture_overlay_requested = false;
                 return "";
             }
 
             if (stage == "before")
                 pixels = std::move(m_captured_before_pixels);
+            else if (stage == "overlay" || stage == "ui" || stage == "present")
+                pixels = std::move(m_captured_overlay_pixels);
             else
                 pixels = std::move(m_captured_after_pixels);
 

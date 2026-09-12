@@ -155,8 +155,10 @@ namespace shadepilot
         std::mutex m_capture_mutex;
         bool m_capture_before_requested = false;
         bool m_capture_after_requested = false;
+        bool m_capture_overlay_requested = false;
         std::vector<uint8_t> m_captured_before_pixels;
         std::vector<uint8_t> m_captured_after_pixels;
+        std::vector<uint8_t> m_captured_overlay_pixels;
         uint32_t m_captured_width = 0;
         uint32_t m_captured_height = 0;
         std::condition_variable m_capture_cv;

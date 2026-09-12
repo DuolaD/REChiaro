@@ -808,11 +808,11 @@ namespace shadepilot
         return nlohmann::json::array({
             {
                 { "name", "shadepilot_get_screen" },
-                { "description", "Captures the game screen. Can capture 'before' (original unprocessed game frame), 'after' (processed with ReShade shaders), or 'both' for direct visual comparison." },
+                { "description", "Captures the game screen. Can capture 'before' (original unprocessed game frame), 'after' (processed with ReShade shaders without UI), 'overlay' (final presented frame with ReShade in-game menu, console, technique list, and stats UI), or 'both'." },
                 { "inputSchema", {
                     { "type", "object" },
                     { "properties", {
-                        { "stage", { { "type", "string" }, { "enum", { "before", "after", "both" } }, { "default", "after" }, { "description", "Which frame to capture: before effects, after effects, or both." } } },
+                        { "stage", { { "type", "string" }, { "enum", { "before", "after", "overlay", "both" } }, { "default", "after" }, { "description", "Which frame to capture: 'before' effects, 'after' effects without UI, 'overlay' (final frame including ReShade in-game menu/console), or 'both'." } } },
                         { "quality", { { "type", "integer" }, { "default", 85 }, { "description", "JPEG quality (1-100)." } } }
                     } }
                 } }
