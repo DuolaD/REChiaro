@@ -1,4 +1,4 @@
-﻿name: Release ShadePilot Addon
+name: Release REChiaro Addon
 
 on:
   release:
@@ -37,7 +37,7 @@ jobs:
       - name: Update Version in src/version.h
         shell: bash
         run: |
-          sed -i "s/^#define SHADEPILOT_VERSION \".*\"/#define SHADEPILOT_VERSION \"${TAG_NAME}\"/" src/version.h
+          sed -i "s/^#define RECHIARO_VERSION \".*\"/#define RECHIARO_VERSION \"${TAG_NAME}\"/" src/version.h
           echo "Updated src/version.h:"
           cat src/version.h
 
@@ -62,4 +62,4 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release upload "${TAG_NAME}" build64/Release/ShadePilot.addon64 build32/Release/ShadePilot.addon32 --clobber
+          gh release upload "${TAG_NAME}" build64/Release/REChiaro.addon64 build32/Release/REChiaro.addon32 --clobber

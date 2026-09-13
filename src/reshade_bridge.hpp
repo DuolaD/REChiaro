@@ -10,7 +10,7 @@
 #include <memory>
 #include "json.hpp"
 
-namespace shadepilot
+namespace rechiaro
 {
     struct FrameStats
     {

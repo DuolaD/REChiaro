@@ -9,7 +9,7 @@
 #include <string>
 #include <chrono>
 
-extern "C" __declspec(dllexport) const char *NAME = "ShadePilot";
+extern "C" __declspec(dllexport) const char *NAME = "REChiaro";
 extern "C" __declspec(dllexport) const char *DESCRIPTION = "Model Context Protocol (MCP) server for ReShade, empowering AI to observe and control shaders, presets, and settings.";
 extern "C" __declspec(dllexport) const char *AUTHOR = "DuolaD";
 extern "C" __declspec(dllexport) const char *WEBSITE = "https://github.com/DuolaD/RE_MCP";
@@ -21,8 +21,8 @@ static std::chrono::steady_clock::time_point s_status_message_time;
 
 static void draw_settings_overlay(reshade::api::effect_runtime *)
 {
-    auto &server = shadepilot::MCPServer::instance();
-    auto &bridge = shadepilot::ReShadeBridge::instance();
+    auto &server = rechiaro::MCPServer::instance();
+    auto &bridge = rechiaro::ReShadeBridge::instance();
     const uint16_t current_port = server.get_port();
     const bool is_running = server.is_running();
 
@@ -64,7 +64,7 @@ static void draw_settings_overlay(reshade::api::effect_runtime *)
         ImGui::SameLine();
         if (ImGui::SmallButton("Copy Claude Config"))
         {
-            const std::string cfg = "{\n  \"mcpServers\": {\n    \"shadepilot\": {\n      \"url\": \"" + sse_url + "\"\n    }\n  }\n}";
+            const std::string cfg = "{\n  \"mcpServers\": {\n    \"rechiaro\": {\n      \"url\": \"" + sse_url + "\"\n    }\n  }\n}";
             ImGui::SetClipboardText(cfg.c_str());
             s_status_message = "Copied Claude Desktop JSON config to clipboard!";
             s_status_message_time = std::chrono::steady_clock::now();
@@ -108,7 +108,7 @@ static void draw_settings_overlay(reshade::api::effect_runtime *)
         if (s_input_port >= 1024 && s_input_port <= 65535)
         {
             const uint16_t target_port = static_cast<uint16_t>(s_input_port);
-            reshade::set_config_value(nullptr, "SHADEPILOT", "Port", std::to_string(target_port).c_str());
+            reshade::set_config_value(nullptr, "RECHIARO", "Port", std::to_string(target_port).c_str());
             server.restart(target_port);
             s_status_message = "Server restarted on port " + std::to_string(server.get_port());
             s_status_message_time = std::chrono::steady_clock::now();
@@ -156,27 +156,27 @@ static void draw_settings_overlay(reshade::api::effect_runtime *)
 
 static void on_init_effect_runtime(reshade::api::effect_runtime *runtime)
 {
-    shadepilot::ReShadeBridge::instance().on_init_effect_runtime(runtime);
+    rechiaro::ReShadeBridge::instance().on_init_effect_runtime(runtime);
 }
 
 static void on_destroy_effect_runtime(reshade::api::effect_runtime *runtime)
 {
-    shadepilot::ReShadeBridge::instance().on_destroy_effect_runtime(runtime);
+    rechiaro::ReShadeBridge::instance().on_destroy_effect_runtime(runtime);
 }
 
 static void on_reshade_begin_effects(reshade::api::effect_runtime *runtime, reshade::api::command_list *cmd_list, reshade::api::resource_view rtv, reshade::api::resource_view rtv_srgb)
 {
-    shadepilot::ReShadeBridge::instance().on_begin_effects(runtime, cmd_list, rtv, rtv_srgb);
+    rechiaro::ReShadeBridge::instance().on_begin_effects(runtime, cmd_list, rtv, rtv_srgb);
 }
 
 static void on_reshade_finish_effects(reshade::api::effect_runtime *runtime, reshade::api::command_list *cmd_list, reshade::api::resource_view rtv, reshade::api::resource_view rtv_srgb)
 {
-    shadepilot::ReShadeBridge::instance().on_finish_effects(runtime, cmd_list, rtv, rtv_srgb);
+    rechiaro::ReShadeBridge::instance().on_finish_effects(runtime, cmd_list, rtv, rtv_srgb);
 }
 
 static void on_reshade_present(reshade::api::effect_runtime *runtime)
 {
-    shadepilot::ReShadeBridge::instance().on_present(runtime);
+    rechiaro::ReShadeBridge::instance().on_present(runtime);
 }
 
 extern "C" __declspec(dllexport) bool AddonInit(HMODULE addon_module, HMODULE reshade_module)
@@ -190,33 +190,35 @@ extern "C" __declspec(dllexport) bool AddonInit(HMODULE addon_module, HMODULE re
     reshade::register_event<reshade::addon_event::reshade_finish_effects>(on_reshade_finish_effects);
     reshade::register_event<reshade::addon_event::reshade_present>(on_reshade_present);
 
-    // Register Addons Settings Overlay UI under ShadePilot
+    // Register Addons Settings Overlay UI under REChiaro
     reshade::register_overlay(nullptr, draw_settings_overlay);
 
     // Read configured port from ReShade.ini if present
     uint16_t port = 39800;
     char port_str[32] = {};
     size_t port_size = sizeof(port_str);
-    if (reshade::get_config_value(nullptr, "SHADEPILOT", "Port", port_str, &port_size))
+    if (!reshade::get_config_value(nullptr, "RECHIARO", "Port", port_str, &port_size))
     {
-        try {
-            int p = std::stoi(port_str);
-            if (p > 0 && p <= 65535) port = static_cast<uint16_t>(p);
-        } catch (...) {}
+        port_size = sizeof(port_str);
+        reshade::get_config_value(nullptr, "SHADEPILOT", "Port", port_str, &port_size);
     }
+    try {
+        int p = std::stoi(port_str);
+        if (p > 0 && p <= 65535) port = static_cast<uint16_t>(p);
+    } catch (...) {}
 
     // Start background MCP server
-    shadepilot::MCPServer::instance().start(port);
+    rechiaro::MCPServer::instance().start(port);
 
     reshade::log::message(reshade::log::level::info,
-        "[ShadePilot] Initialized successfully. Version: " SHADEPILOT_VERSION);
+        "[REChiaro] Initialized successfully. Version: " RECHIARO_VERSION);
 
     return true;
 }
 
 extern "C" __declspec(dllexport) void AddonUninit(HMODULE addon_module, HMODULE reshade_module)
 {
-    shadepilot::MCPServer::instance().stop();
+    rechiaro::MCPServer::instance().stop();
 
     reshade::unregister_overlay(nullptr, draw_settings_overlay);
 

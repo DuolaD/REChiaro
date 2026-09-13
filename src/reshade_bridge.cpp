@@ -15,7 +15,7 @@
 #include "stb_image_write.h"
 #include "base64.hpp"
 
-namespace shadepilot
+namespace rechiaro
 {
     ReShadeBridge& ReShadeBridge::instance()
     {
@@ -37,7 +37,7 @@ namespace shadepilot
         std::lock_guard<std::mutex> lock(m_runtime_mutex);
         m_current_runtime = runtime;
         update_device_info(runtime);
-        reshade::log::message(reshade::log::level::info, "[ShadePilot] Effect runtime initialized.");
+        reshade::log::message(reshade::log::level::info, "[REChiaro] Effect runtime initialized.");
     }
 
     void ReShadeBridge::on_destroy_effect_runtime(reshade::api::effect_runtime *runtime)
@@ -51,7 +51,7 @@ namespace shadepilot
             }
             m_current_runtime = nullptr;
         }
-        reshade::log::message(reshade::log::level::info, "[ShadePilot] Effect runtime destroyed.");
+        reshade::log::message(reshade::log::level::info, "[REChiaro] Effect runtime destroyed.");
     }
 
     void ReShadeBridge::cleanup_staging_buffers(reshade::api::device *device)
@@ -1488,7 +1488,7 @@ namespace shadepilot
             std::string upper_sec = sec;
             std::transform(upper_sec.begin(), upper_sec.end(), upper_sec.begin(), [](unsigned char c) { return (char)std::toupper(c); });
 
-            // Matches section names e.g. "DEPTH" for "Generic Depth", "OBS_CAPTURE", "SHADEPILOT", etc.
+            // Matches section names e.g. "DEPTH" for "Generic Depth", "OBS_CAPTURE", "RECHIARO", etc.
             if (upper_sec == upper_name || upper_name.find(upper_sec) != std::string::npos || upper_sec.find(upper_name) != std::string::npos)
             {
                 res[sec] = it.value();
@@ -1504,8 +1504,8 @@ namespace shadepilot
         // If user passed addon name "Generic Depth", map to section "DEPTH"
         if (section == "Generic Depth" || section == "generic_depth")
             section = "DEPTH";
-        else if (section == "ShadePilot" || section == "shadepilot")
-            section = "SHADEPILOT";
+        else if (section == "REChiaro" || section == "rechiaro" || section == "ShadePilot" || section == "shadepilot")
+            section = "RECHIARO";
 
         return set_config(section, key, value);
     }

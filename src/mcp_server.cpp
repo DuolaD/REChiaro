@@ -12,7 +12,7 @@
 #include <iostream>
 #include <chrono>
 
-namespace shadepilot
+namespace rechiaro
 {
     MCPServer& MCPServer::instance()
     {
@@ -129,8 +129,8 @@ namespace shadepilot
         svr.Get("/health", [this](const httplib::Request &, httplib::Response &res) {
             nlohmann::json status;
             status["status"] = "ok";
-            status["server"] = "ShadePilot";
-            status["version"] = SHADEPILOT_VERSION;
+            status["server"] = "REChiaro";
+            status["version"] = RECHIARO_VERSION;
             status["port"] = m_port.load();
 
             const auto &bridge = ReShadeBridge::instance();
@@ -236,7 +236,7 @@ namespace shadepilot
                 if (i > 0)
                 {
                     reshade::log::message(reshade::log::level::warning,
-                        ("[ShadePilot] Port " + std::to_string(base_port) +
+                        ("[REChiaro] Port " + std::to_string(base_port) +
                          " is in use. Auto-fallback to port " + std::to_string(bound_port)).c_str());
                 }
                 break;
@@ -247,14 +247,14 @@ namespace shadepilot
         if (bound_port == 0)
         {
             reshade::log::message(reshade::log::level::error,
-                ("[ShadePilot] Failed to bind to any port in range [" +
+                ("[REChiaro] Failed to bind to any port in range [" +
                  std::to_string(base_port) + " - " + std::to_string(base_port + MAX_PORT_ATTEMPTS - 1) + "]. MCP server aborted.").c_str());
             m_running = false;
             return;
         }
 
         reshade::log::message(reshade::log::level::info,
-            ("[ShadePilot] MCP Server listening on http://127.0.0.1:" + std::to_string(bound_port)).c_str());
+            ("[REChiaro] MCP Server listening on http://127.0.0.1:" + std::to_string(bound_port)).c_str());
 
         svr.listen_after_bind();
         m_running = false;
@@ -280,8 +280,8 @@ namespace shadepilot
                 { "tools", { { "listChanged", false } } }
             };
             result["serverInfo"] = {
-                { "name", "ShadePilot" },
-                { "version", SHADEPILOT_VERSION }
+                { "name", "REChiaro" },
+                { "version", RECHIARO_VERSION }
             };
             resp["result"] = result;
         }
@@ -306,61 +306,67 @@ namespace shadepilot
 
             try
             {
-                if (tool_name == "shadepilot_get_screen")
+                std::string action = tool_name;
+                if (action.rfind("rechiaro_", 0) == 0)
+                    action = action.substr(9);
+                else if (action.rfind("shadepilot_", 0) == 0)
+                    action = action.substr(11);
+
+                if (action == "get_screen")
                     resp["result"] = tool_get_screen(args);
-                else if (tool_name == "shadepilot_list_effects")
+                else if (action == "list_effects")
                     resp["result"] = tool_list_effects(args);
-                else if (tool_name == "shadepilot_list_techniques")
+                else if (action == "list_techniques")
                     resp["result"] = tool_list_techniques(args);
-                else if (tool_name == "shadepilot_set_technique_state")
+                else if (action == "set_technique_state")
                     resp["result"] = tool_set_technique_state(args);
-                else if (tool_name == "shadepilot_reorder_techniques")
+                else if (action == "reorder_techniques")
                     resp["result"] = tool_reorder_techniques(args);
-                else if (tool_name == "shadepilot_list_variables")
+                else if (action == "list_variables")
                     resp["result"] = tool_list_variables(args);
-                else if (tool_name == "shadepilot_set_variable")
+                else if (action == "set_variable")
                     resp["result"] = tool_set_variable(args);
-                else if (tool_name == "shadepilot_reset_variable")
+                else if (action == "reset_variable")
                     resp["result"] = tool_reset_variable(args);
-                else if (tool_name == "shadepilot_get_preprocessor_definitions")
+                else if (action == "get_preprocessor_definitions")
                     resp["result"] = tool_get_preprocessor_definitions(args);
-                else if (tool_name == "shadepilot_set_preprocessor_definition")
+                else if (action == "set_preprocessor_definition")
                     resp["result"] = tool_set_preprocessor_definition(args);
-                else if (tool_name == "shadepilot_save_preset")
+                else if (action == "save_preset")
                     resp["result"] = tool_save_preset(args);
-                else if (tool_name == "shadepilot_load_preset")
+                else if (action == "load_preset")
                     resp["result"] = tool_load_preset(args);
-                else if (tool_name == "shadepilot_get_current_preset")
+                else if (action == "get_current_preset")
                     resp["result"] = tool_get_current_preset(args);
-                else if (tool_name == "shadepilot_set_performance_mode")
+                else if (action == "set_performance_mode")
                     resp["result"] = tool_set_performance_mode(args);
-                else if (tool_name == "shadepilot_get_performance_mode")
+                else if (action == "get_performance_mode")
                     resp["result"] = tool_get_performance_mode(args);
-                else if (tool_name == "shadepilot_reload_effects")
+                else if (action == "reload_effects")
                     resp["result"] = tool_reload_effects(args);
-                else if (tool_name == "shadepilot_set_effects_state")
+                else if (action == "set_effects_state")
                     resp["result"] = tool_set_effects_state(args);
-                else if (tool_name == "shadepilot_get_effects_state")
+                else if (action == "get_effects_state")
                     resp["result"] = tool_get_effects_state(args);
-                else if (tool_name == "shadepilot_set_overlay_state")
+                else if (action == "set_overlay_state")
                     resp["result"] = tool_set_overlay_state(args);
-                else if (tool_name == "shadepilot_list_addons")
+                else if (action == "list_addons")
                     resp["result"] = tool_list_addons(args);
-                else if (tool_name == "shadepilot_set_addon_state")
+                else if (action == "set_addon_state")
                     resp["result"] = tool_set_addon_state(args);
-                else if (tool_name == "shadepilot_get_addon_config")
+                else if (action == "get_addon_config")
                     resp["result"] = tool_get_addon_config(args);
-                else if (tool_name == "shadepilot_set_addon_config")
+                else if (action == "set_addon_config")
                     resp["result"] = tool_set_addon_config(args);
-                else if (tool_name == "shadepilot_get_config")
+                else if (action == "get_config")
                     resp["result"] = tool_get_config(args);
-                else if (tool_name == "shadepilot_get_all_config")
+                else if (action == "get_all_config")
                     resp["result"] = tool_get_all_config(args);
-                else if (tool_name == "shadepilot_set_config")
+                else if (action == "set_config")
                     resp["result"] = tool_set_config(args);
-                else if (tool_name == "shadepilot_get_stats")
+                else if (action == "get_stats")
                     resp["result"] = tool_get_stats(args);
-                else if (tool_name == "shadepilot_get_logs")
+                else if (action == "get_logs")
                     resp["result"] = tool_get_logs(args);
                 else
                 {
@@ -938,7 +944,7 @@ namespace shadepilot
     {
         return nlohmann::json::array({
             {
-                { "name", "shadepilot_get_screen" },
+                { "name", "rechiaro_get_screen" },
                 { "description", "Captures the game screen. Can capture 'before' (original unprocessed game frame), 'after' (processed with ReShade shaders without UI), 'overlay' (final presented frame with ReShade in-game menu, console, technique list, and stats UI), or 'both' (atomically captures both 'before' and 'after' at the exact same rendering frame without command list interruption)." },
                 { "inputSchema", {
                     { "type", "object" },
@@ -949,7 +955,7 @@ namespace shadepilot
                 } }
             },
             {
-                { "name", "shadepilot_list_effects" },
+                { "name", "rechiaro_list_effects" },
                 { "description", "Lists all loaded ReShade effect files (.fx), their active rendering status, the techniques defined in each file, and effect preprocessor macros." },
                 { "inputSchema", {
                     { "type", "object" },
@@ -959,7 +965,7 @@ namespace shadepilot
                 } }
             },
             {
-                { "name", "shadepilot_list_techniques" },
+                { "name", "rechiaro_list_techniques" },
                 { "description", "Lists all shader techniques loaded in ReShade, their file origins, whether they are enabled, whether they are hidden, and their display labels." },
                 { "inputSchema", {
                     { "type", "object" },
@@ -969,7 +975,7 @@ namespace shadepilot
                 } }
             },
             {
-                { "name", "shadepilot_set_technique_state" },
+                { "name", "rechiaro_set_technique_state" },
                 { "description", "Enables or disables a specific ReShade shader technique." },
                 { "inputSchema", {
                     { "type", "object" },
@@ -981,7 +987,7 @@ namespace shadepilot
                 } }
             },
             {
-                { "name", "shadepilot_reorder_techniques" },
+                { "name", "rechiaro_reorder_techniques" },
                 { "description", "Changes the rendering order of loaded techniques." },
                 { "inputSchema", {
                     { "type", "object" },
@@ -992,7 +998,7 @@ namespace shadepilot
                 } }
             },
             {
-                { "name", "shadepilot_list_variables" },
+                { "name", "rechiaro_list_variables" },
                 { "description", "Enumerates uniform variables (sliders, colors, toggles) of loaded effects with their current values, categories, ranges, units, digits, types, and descriptions. By default (enabled_only=true, include_system=false), matches the ReShade Home tab exactly." },
                 { "inputSchema", {
                     { "type", "object" },
@@ -1004,7 +1010,7 @@ namespace shadepilot
                 } }
             },
             {
-                { "name", "shadepilot_set_variable" },
+                { "name", "rechiaro_set_variable" },
                 { "description", "Modifies the value of a specific uniform variable in an effect shader and automatically commits to the active preset." },
                 { "inputSchema", {
                     { "type", "object" },
@@ -1018,7 +1024,7 @@ namespace shadepilot
                 } }
             },
             {
-                { "name", "shadepilot_reset_variable" },
+                { "name", "rechiaro_reset_variable" },
                 { "description", "Resets a specific uniform variable to its default preset value." },
                 { "inputSchema", {
                     { "type", "object" },
@@ -1030,7 +1036,7 @@ namespace shadepilot
                 } }
             },
             {
-                { "name", "shadepilot_get_preprocessor_definitions" },
+                { "name", "rechiaro_get_preprocessor_definitions" },
                 { "description", "Gets preprocessor definitions (macros) for a specific effect or common global macros." },
                 { "inputSchema", {
                     { "type", "object" },
@@ -1040,7 +1046,7 @@ namespace shadepilot
                 } }
             },
             {
-                { "name", "shadepilot_set_preprocessor_definition" },
+                { "name", "rechiaro_set_preprocessor_definition" },
                 { "description", "Sets a preprocessor definition (macro) for an effect and triggers automatic recompilation." },
                 { "inputSchema", {
                     { "type", "object" },
@@ -1053,12 +1059,12 @@ namespace shadepilot
                 } }
             },
             {
-                { "name", "shadepilot_save_preset" },
+                { "name", "rechiaro_save_preset" },
                 { "description", "Saves all currently active shader technique states and uniform variable modifications to the active preset ini file on disk." },
                 { "inputSchema", { { "type", "object" } } }
             },
             {
-                { "name", "shadepilot_load_preset" },
+                { "name", "rechiaro_load_preset" },
                 { "description", "Switches the active ReShade preset to the specified preset file path and applies its settings immediately." },
                 { "inputSchema", {
                     { "type", "object" },
@@ -1069,12 +1075,12 @@ namespace shadepilot
                 } }
             },
             {
-                { "name", "shadepilot_get_current_preset" },
+                { "name", "rechiaro_get_current_preset" },
                 { "description", "Gets the file path of the currently active ReShade preset." },
                 { "inputSchema", { { "type", "object" } } }
             },
             {
-                { "name", "shadepilot_set_performance_mode" },
+                { "name", "rechiaro_set_performance_mode" },
                 { "description", "Enables or disables ReShade's Performance Mode and immediately triggers shader recompilation without restarting the game." },
                 { "inputSchema", {
                     { "type", "object" },
@@ -1085,12 +1091,12 @@ namespace shadepilot
                 } }
             },
             {
-                { "name", "shadepilot_get_performance_mode" },
+                { "name", "rechiaro_get_performance_mode" },
                 { "description", "Checks whether ReShade is currently in Performance Mode." },
                 { "inputSchema", { { "type", "object" } } }
             },
             {
-                { "name", "shadepilot_reload_effects" },
+                { "name", "rechiaro_reload_effects" },
                 { "description", "Queues an effect or all effects for hot-reloading and recompiling in the next frame." },
                 { "inputSchema", {
                     { "type", "object" },
@@ -1100,7 +1106,7 @@ namespace shadepilot
                 } }
             },
             {
-                { "name", "shadepilot_set_effects_state" },
+                { "name", "rechiaro_set_effects_state" },
                 { "description", "Enables or disables all ReShade post-processing effects globally (equivalent to the master effects toggle key)." },
                 { "inputSchema", {
                     { "type", "object" },
@@ -1111,12 +1117,12 @@ namespace shadepilot
                 } }
             },
             {
-                { "name", "shadepilot_get_effects_state" },
+                { "name", "rechiaro_get_effects_state" },
                 { "description", "Gets the current global effects rendering state (whether effects are enabled or disabled)." },
                 { "inputSchema", { { "type", "object" } } }
             },
             {
-                { "name", "shadepilot_set_overlay_state" },
+                { "name", "rechiaro_set_overlay_state" },
                 { "description", "Opens or closes ReShade's native in-game overlay menu." },
                 { "inputSchema", {
                     { "type", "object" },
@@ -1127,12 +1133,12 @@ namespace shadepilot
                 } }
             },
             {
-                { "name", "shadepilot_list_addons" },
+                { "name", "rechiaro_list_addons" },
                 { "description", "Lists all installed ReShade Add-ons, their files, descriptions, authors, versions, websites, and enabled/disabled status (matching ReShade Add-ons tab)." },
                 { "inputSchema", { { "type", "object" } } }
             },
             {
-                { "name", "shadepilot_set_addon_state" },
+                { "name", "rechiaro_set_addon_state" },
                 { "description", "Enables or disables an installed ReShade Add-on (takes effect upon next game launch)." },
                 { "inputSchema", {
                     { "type", "object" },
@@ -1144,7 +1150,7 @@ namespace shadepilot
                 } }
             },
             {
-                { "name", "shadepilot_get_addon_config" },
+                { "name", "rechiaro_get_addon_config" },
                 { "description", "Reads configuration settings associated with a specific Add-on from ReShade.ini (matching the Add-on's independent settings)." },
                 { "inputSchema", {
                     { "type", "object" },
@@ -1155,7 +1161,7 @@ namespace shadepilot
                 } }
             },
             {
-                { "name", "shadepilot_set_addon_config" },
+                { "name", "rechiaro_set_addon_config" },
                 { "description", "Writes a configuration setting associated with a specific Add-on to ReShade.ini and saves immediately." },
                 { "inputSchema", {
                     { "type", "object" },
@@ -1168,7 +1174,7 @@ namespace shadepilot
                 } }
             },
             {
-                { "name", "shadepilot_get_config" },
+                { "name", "rechiaro_get_config" },
                 { "description", "Reads a single configuration setting from ReShade.ini." },
                 { "inputSchema", {
                     { "type", "object" },
@@ -1180,12 +1186,12 @@ namespace shadepilot
                 } }
             },
             {
-                { "name", "shadepilot_get_all_config" },
+                { "name", "rechiaro_get_all_config" },
                 { "description", "Reads all settings across all sections in ReShade.ini parsed as structured JSON." },
                 { "inputSchema", { { "type", "object" } } }
             },
             {
-                { "name", "shadepilot_set_config" },
+                { "name", "rechiaro_set_config" },
                 { "description", "Writes a configuration setting to ReShade.ini and reloads configuration." },
                 { "inputSchema", {
                     { "type", "object" },
@@ -1198,12 +1204,12 @@ namespace shadepilot
                 } }
             },
             {
-                { "name", "shadepilot_get_stats" },
+                { "name", "rechiaro_get_stats" },
                 { "description", "Gets real-time rendering statistics including current FPS, frame duration (ms), graphics API (D3D11/D3D12/Vulkan), GPU device ID/vendor ID, active techniques count, and resolution." },
                 { "inputSchema", { { "type", "object" } } }
             },
             {
-                { "name", "shadepilot_get_logs" },
+                { "name", "rechiaro_get_logs" },
                 { "description", "Retrieves the recent lines of ReShade.log, with option to filter for error and warning messages." },
                 { "inputSchema", {
                     { "type", "object" },

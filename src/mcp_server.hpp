@@ -9,7 +9,7 @@
 #include <unordered_map>
 #include "json.hpp"
 
-namespace shadepilot
+namespace rechiaro
 {
     class MCPServer
     {

@@ -1,3 +1,3 @@
-﻿#pragma once
+#pragma once
 
-#define SHADEPILOT_VERSION "v1.0.0"
+#define RECHIARO_VERSION "v1.0.0"
