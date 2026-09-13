@@ -45,6 +45,7 @@ namespace shadepilot
         if (m_running.load())
         {
             m_running = false;
+            m_cv_shutdown.notify_all();
             // Connect locally to trigger unblock if needed
             try
             {
@@ -178,9 +179,11 @@ namespace shadepilot
                     }
 
                     // Keep alive heartbeat loop
+                    std::unique_lock<std::mutex> lock(m_shutdown_mutex);
                     while (m_running.load())
                     {
-                        std::this_thread::sleep_for(std::chrono::seconds(15));
+                        if (m_cv_shutdown.wait_for(lock, std::chrono::seconds(15), [this] { return !m_running.load(); }))
+                            break;
                         std::string ping = ": keepalive\n\n";
                         if (!sink.write(ping.data(), ping.size()))
                             break;
@@ -305,6 +308,8 @@ namespace shadepilot
             {
                 if (tool_name == "shadepilot_get_screen")
                     resp["result"] = tool_get_screen(args);
+                else if (tool_name == "shadepilot_list_effects")
+                    resp["result"] = tool_list_effects(args);
                 else if (tool_name == "shadepilot_list_techniques")
                     resp["result"] = tool_list_techniques(args);
                 else if (tool_name == "shadepilot_set_technique_state")
@@ -343,8 +348,14 @@ namespace shadepilot
                     resp["result"] = tool_list_addons(args);
                 else if (tool_name == "shadepilot_set_addon_state")
                     resp["result"] = tool_set_addon_state(args);
+                else if (tool_name == "shadepilot_get_addon_config")
+                    resp["result"] = tool_get_addon_config(args);
+                else if (tool_name == "shadepilot_set_addon_config")
+                    resp["result"] = tool_set_addon_config(args);
                 else if (tool_name == "shadepilot_get_config")
                     resp["result"] = tool_get_config(args);
+                else if (tool_name == "shadepilot_get_all_config")
+                    resp["result"] = tool_get_all_config(args);
                 else if (tool_name == "shadepilot_set_config")
                     resp["result"] = tool_set_config(args);
                 else if (tool_name == "shadepilot_get_stats")
@@ -383,10 +394,18 @@ namespace shadepilot
 
         if (stage == "both")
         {
-            std::string before_b64 = ReShadeBridge::instance().capture_screen_base64("before", quality);
-            std::string after_b64 = ReShadeBridge::instance().capture_screen_base64("after", quality);
+            auto dual = ReShadeBridge::instance().capture_both_screens_base64(quality);
 
-            if (!before_b64.empty())
+            if (dual.before_base64.empty() && dual.after_base64.empty())
+            {
+                content.push_back({
+                    { "type", "text" },
+                    { "text", "Failed to capture screenshots. The game window might be minimized or ReShade runtime is uninitialized." }
+                });
+                return { { "content", content }, { "isError", true } };
+            }
+
+            if (!dual.before_base64.empty())
             {
                 content.push_back({
                     { "type", "text" },
@@ -394,12 +413,12 @@ namespace shadepilot
                 });
                 content.push_back({
                     { "type", "image" },
-                    { "data", before_b64 },
+                    { "data", dual.before_base64 },
                     { "mimeType", "image/jpeg" }
                 });
             }
 
-            if (!after_b64.empty())
+            if (!dual.after_base64.empty())
             {
                 content.push_back({
                     { "type", "text" },
@@ -407,7 +426,7 @@ namespace shadepilot
                 });
                 content.push_back({
                     { "type", "image" },
-                    { "data", after_b64 },
+                    { "data", dual.after_base64 },
                     { "mimeType", "image/jpeg" }
                 });
             }
@@ -438,6 +457,34 @@ namespace shadepilot
         return { { "content", content } };
     }
 
+    nlohmann::json MCPServer::tool_list_effects(const nlohmann::json &args)
+    {
+        const bool enabled_only = args.value("enabled_only", false);
+        const auto effects = ReShadeBridge::instance().list_effects();
+
+        nlohmann::json arr = nlohmann::json::array();
+        for (const auto &e : effects)
+        {
+            if (enabled_only && e.enabled_technique_count == 0)
+                continue;
+
+            arr.push_back({
+                { "file_name", e.file_name },
+                { "full_path", e.full_path },
+                { "compiled", e.compiled },
+                { "technique_count", e.technique_count },
+                { "enabled_technique_count", e.enabled_technique_count },
+                { "errors", e.errors }
+            });
+        }
+
+        return {
+            { "content", {
+                { { "type", "text" }, { "text", arr.dump(2) } }
+            } }
+        };
+    }
+
     nlohmann::json MCPServer::tool_list_techniques(const nlohmann::json &args)
     {
         const bool enabled_only = args.value("enabled_only", false);
@@ -450,6 +497,7 @@ namespace shadepilot
                 { "name", t.name },
                 { "effect_name", t.effect_name },
                 { "enabled", t.enabled },
+                { "hidden", t.hidden },
                 { "label", t.label },
                 { "tooltip", t.tooltip }
             });
@@ -494,7 +542,9 @@ namespace shadepilot
     nlohmann::json MCPServer::tool_list_variables(const nlohmann::json &args)
     {
         const std::string effect = args.value("effect", "");
-        const auto vars = ReShadeBridge::instance().list_uniform_variables(effect);
+        const bool enabled_only = args.value("enabled_only", true);
+        const bool include_system = args.value("include_system", false);
+        const auto vars = ReShadeBridge::instance().list_uniform_variables(effect, enabled_only, include_system);
 
         nlohmann::json arr = nlohmann::json::array();
         for (const auto &v : vars)
@@ -505,9 +555,15 @@ namespace shadepilot
                 { "type", v.type },
                 { "label", v.label },
                 { "tooltip", v.tooltip },
-                { "current_value", v.current_value }
+                { "current_value", v.current_value },
+                { "is_system", v.is_system },
+                { "is_hidden", v.is_hidden },
+                { "effect_enabled", v.effect_enabled }
             };
+            if (!v.ui_category.empty()) item["ui_category"] = v.ui_category;
             if (!v.ui_type.empty()) item["ui_type"] = v.ui_type;
+            if (!v.ui_units.empty()) item["ui_units"] = v.ui_units;
+            if (v.ui_digits >= 0) item["ui_digits"] = v.ui_digits;
             if (!v.min_value.is_null()) item["ui_min"] = v.min_value;
             if (!v.max_value.is_null()) item["ui_max"] = v.max_value;
             if (!v.step_value.is_null()) item["ui_step"] = v.step_value;
@@ -528,11 +584,26 @@ namespace shadepilot
         const std::string effect = args.value("effect", "");
         const std::string var = args.value("variable", "");
         const auto val = args.value("value", nlohmann::json());
+        const bool auto_save = args.value("auto_save", true);
 
-        const bool ok = ReShadeBridge::instance().set_uniform_variable(effect, var, val);
+        const bool ok = ReShadeBridge::instance().set_uniform_variable(effect, var, val, auto_save);
+        std::string msg;
+        if (ok)
+        {
+            msg = "Successfully updated variable '" + var + "'";
+            if (auto_save)
+                msg += " and saved to current preset";
+            if (ReShadeBridge::instance().get_performance_mode())
+                msg += ". Notice: Performance Mode is active; changes may require reloading effects or disabling Performance Mode to take visual effect.";
+        }
+        else
+        {
+            msg = "Failed to set variable '" + var + "'. Verify the variable name and that the effect is currently loaded.";
+        }
+
         return {
             { "content", {
-                { { "type", "text" }, { "text", ok ? ("Successfully updated variable '" + var + "'") : ("Failed to set variable: " + var) } }
+                { { "type", "text" }, { "text", msg } }
             } },
             { "isError", !ok }
         };
@@ -698,6 +769,9 @@ namespace shadepilot
                 { "name", a.name },
                 { "description", a.description },
                 { "author", a.author },
+                { "version", a.version },
+                { "website", a.website },
+                { "issues", a.issues },
                 { "file", a.file },
                 { "enabled", a.enabled }
             });
@@ -724,6 +798,48 @@ namespace shadepilot
         };
     }
 
+    nlohmann::json MCPServer::tool_get_addon_config(const nlohmann::json &args)
+    {
+        const std::string addon_name = args.value("addon_name", "");
+        if (addon_name.empty())
+        {
+            return {
+                { "content", { { { "type", "text" }, { "text", "Missing required argument 'addon_name'." } } } },
+                { "isError", true }
+            };
+        }
+
+        const auto cfg = ReShadeBridge::instance().get_addon_config(addon_name);
+        return {
+            { "content", {
+                { { "type", "text" }, { "text", cfg.dump(2) } }
+            } }
+        };
+    }
+
+    nlohmann::json MCPServer::tool_set_addon_config(const nlohmann::json &args)
+    {
+        const std::string addon_name = args.value("addon_name", "");
+        const std::string key = args.value("key", "");
+        const std::string value = args.value("value", "");
+
+        if (addon_name.empty() || key.empty())
+        {
+            return {
+                { "content", { { { "type", "text" }, { "text", "Missing required arguments 'addon_name' or 'key'." } } } },
+                { "isError", true }
+            };
+        }
+
+        const bool ok = ReShadeBridge::instance().set_addon_config(addon_name, key, value);
+        return {
+            { "content", {
+                { { "type", "text" }, { "text", ok ? ("Set addon [" + addon_name + "] " + key + " = " + value) : "Failed to set addon config." } }
+            } },
+            { "isError", !ok }
+        };
+    }
+
     nlohmann::json MCPServer::tool_get_config(const nlohmann::json &args)
     {
         const std::string section = args.value("section", "");
@@ -733,6 +849,16 @@ namespace shadepilot
         return {
             { "content", {
                 { { "type", "text" }, { "text", val } }
+            } }
+        };
+    }
+
+    nlohmann::json MCPServer::tool_get_all_config(const nlohmann::json &)
+    {
+        const auto cfg = ReShadeBridge::instance().get_all_config();
+        return {
+            { "content", {
+                { { "type", "text" }, { "text", cfg.dump(2) } }
             } }
         };
     }
@@ -760,10 +886,15 @@ namespace shadepilot
             { "render_pipeline", stats.pipeline_name.empty() ? "Pending" : stats.pipeline_name },
             { "api", stats.api_name.empty() ? "Pending" : stats.api_name },
             { "device", stats.device_name },
+            { "vendor_id", stats.vendor_id },
+            { "device_id", stats.device_id },
             { "fps", stats.fps },
             { "frame_time_ms", stats.frame_time_ms },
             { "resolution", std::to_string(stats.width) + "x" + std::to_string(stats.height) },
             { "frame_count", stats.frame_count },
+            { "total_techniques", stats.total_techniques },
+            { "enabled_techniques", stats.enabled_techniques },
+            { "enabled_technique_names", stats.enabled_technique_names },
             { "performance_mode", stats.performance_mode },
             { "effects_enabled", stats.effects_enabled },
             { "current_preset", stats.current_preset },
@@ -808,7 +939,7 @@ namespace shadepilot
         return nlohmann::json::array({
             {
                 { "name", "shadepilot_get_screen" },
-                { "description", "Captures the game screen. Can capture 'before' (original unprocessed game frame), 'after' (processed with ReShade shaders without UI), 'overlay' (final presented frame with ReShade in-game menu, console, technique list, and stats UI), or 'both'." },
+                { "description", "Captures the game screen. Can capture 'before' (original unprocessed game frame), 'after' (processed with ReShade shaders without UI), 'overlay' (final presented frame with ReShade in-game menu, console, technique list, and stats UI), or 'both' (atomically captures both 'before' and 'after' at the exact same rendering frame without command list interruption)." },
                 { "inputSchema", {
                     { "type", "object" },
                     { "properties", {
@@ -818,8 +949,18 @@ namespace shadepilot
                 } }
             },
             {
+                { "name", "shadepilot_list_effects" },
+                { "description", "Lists all loaded ReShade effect files (.fx), their active rendering status, the techniques defined in each file, and effect preprocessor macros." },
+                { "inputSchema", {
+                    { "type", "object" },
+                    { "properties", {
+                        { "enabled_only", { { "type", "boolean" }, { "default", false }, { "description", "If true, only returns effect files that have at least one active rendering technique." } } }
+                    } }
+                } }
+            },
+            {
                 { "name", "shadepilot_list_techniques" },
-                { "description", "Lists all shader techniques loaded in ReShade, their file origins, whether they are enabled, and their display labels." },
+                { "description", "Lists all shader techniques loaded in ReShade, their file origins, whether they are enabled, whether they are hidden, and their display labels." },
                 { "inputSchema", {
                     { "type", "object" },
                     { "properties", {
@@ -852,24 +993,27 @@ namespace shadepilot
             },
             {
                 { "name", "shadepilot_list_variables" },
-                { "description", "Enumerates uniform variables (sliders, colors, toggles) of loaded effects with their current values, ranges, types, and descriptions." },
+                { "description", "Enumerates uniform variables (sliders, colors, toggles) of loaded effects with their current values, categories, ranges, units, digits, types, and descriptions. By default (enabled_only=true, include_system=false), matches the ReShade Home tab exactly." },
                 { "inputSchema", {
                     { "type", "object" },
                     { "properties", {
-                        { "effect", { { "type", "string" }, { "default", "" }, { "description", "Optional effect file name (e.g. 'MartysMods_REGRADE+.fx') to filter variables. If empty, lists all." } } }
+                        { "effect", { { "type", "string" }, { "default", "" }, { "description", "Optional effect file name (e.g. 'MartysMods_REGRADE+.fx') to filter variables. If empty, lists variables across effects." } } },
+                        { "enabled_only", { { "type", "boolean" }, { "default", true }, { "description", "If true (default), only lists variables belonging to currently enabled/active effects (matching ReShade Home tab). Set to false to list variables from all loaded effects." } } },
+                        { "include_system", { { "type", "boolean" }, { "default", false }, { "description", "If false (default), filters out internal engine/system variables (e.g. date, timer, frametime, hidden variables)." } } }
                     } }
                 } }
             },
             {
                 { "name", "shadepilot_set_variable" },
-                { "description", "Modifies the value of a specific uniform variable in an effect shader." },
+                { "description", "Modifies the value of a specific uniform variable in an effect shader and automatically commits to the active preset." },
                 { "inputSchema", {
                     { "type", "object" },
                     { "required", { "variable", "value" } },
                     { "properties", {
-                        { "effect", { { "type", "string" }, { "default", "" }, { "description", "Effect filename (e.g. 'MartysMods_REGRADE+.fx')." } } },
+                        { "effect", { { "type", "string" }, { "default", "" }, { "description", "Effect filename (e.g. 'MartysMods_REGRADE+.fx'). Optional if variable name is unique." } } },
                         { "variable", { { "type", "string" }, { "description", "Variable declaration name (e.g. 'Exposure', 'Saturation')." } } },
-                        { "value", { { "description", "New value: number for float/int, boolean for bool, or array for vectors." } } }
+                        { "value", { { "description", "New value: number for float/int, boolean for bool, or array for vectors." } } },
+                        { "auto_save", { { "type", "boolean" }, { "default", true }, { "description", "If true (default), automatically persists change to the current preset on disk." } } }
                     } }
                 } }
             },
@@ -984,7 +1128,7 @@ namespace shadepilot
             },
             {
                 { "name", "shadepilot_list_addons" },
-                { "description", "Lists all installed ReShade Add-ons, their files, descriptions, authors, and enabled/disabled status." },
+                { "description", "Lists all installed ReShade Add-ons, their files, descriptions, authors, versions, websites, and enabled/disabled status (matching ReShade Add-ons tab)." },
                 { "inputSchema", { { "type", "object" } } }
             },
             {
@@ -1000,16 +1144,45 @@ namespace shadepilot
                 } }
             },
             {
+                { "name", "shadepilot_get_addon_config" },
+                { "description", "Reads configuration settings associated with a specific Add-on from ReShade.ini (matching the Add-on's independent settings)." },
+                { "inputSchema", {
+                    { "type", "object" },
+                    { "required", { "addon_name" } },
+                    { "properties", {
+                        { "addon_name", { { "type", "string" }, { "description", "Add-on name or section header (e.g. 'DEPTH', 'OBS_CAPTURE')." } } }
+                    } }
+                } }
+            },
+            {
+                { "name", "shadepilot_set_addon_config" },
+                { "description", "Writes a configuration setting associated with a specific Add-on to ReShade.ini and saves immediately." },
+                { "inputSchema", {
+                    { "type", "object" },
+                    { "required", { "addon_name", "key", "value" } },
+                    { "properties", {
+                        { "addon_name", { { "type", "string" }, { "description", "Add-on name or section header." } } },
+                        { "key", { { "type", "string" }, { "description", "Setting key name." } } },
+                        { "value", { { "type", "string" }, { "description", "Setting value to assign." } } }
+                    } }
+                } }
+            },
+            {
                 { "name", "shadepilot_get_config" },
-                { "description", "Reads a configuration setting from ReShade.ini." },
+                { "description", "Reads a single configuration setting from ReShade.ini." },
                 { "inputSchema", {
                     { "type", "object" },
                     { "required", { "section", "key" } },
                     { "properties", {
-                        { "section", { { "type", "string" }, { "description", "Section name (e.g. 'OVERLAY', 'INPUT', 'DEPTH')." } } },
+                        { "section", { { "type", "string" }, { "description", "Section name (e.g. 'OVERLAY', 'INPUT', 'GENERAL')." } } },
                         { "key", { { "type", "string" }, { "description", "Key name (e.g. 'KeyOverlay', 'PerformanceMode')." } } }
                     } }
                 } }
+            },
+            {
+                { "name", "shadepilot_get_all_config" },
+                { "description", "Reads all settings across all sections in ReShade.ini parsed as structured JSON." },
+                { "inputSchema", { { "type", "object" } } }
             },
             {
                 { "name", "shadepilot_set_config" },
@@ -1026,7 +1199,7 @@ namespace shadepilot
             },
             {
                 { "name", "shadepilot_get_stats" },
-                { "description", "Gets real-time rendering statistics including current FPS, frame duration (ms), graphics API (D3D11/D3D12/Vulkan), and resolution." },
+                { "description", "Gets real-time rendering statistics including current FPS, frame duration (ms), graphics API (D3D11/D3D12/Vulkan), GPU device ID/vendor ID, active techniques count, and resolution." },
                 { "inputSchema", { { "type", "object" } } }
             },
             {

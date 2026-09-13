@@ -1,4 +1,4 @@
-﻿cmake_minimum_required(VERSION 3.20)
+cmake_minimum_required(VERSION 3.20)
 project(ShadePilot VERSION 1.0.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -43,4 +43,5 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     ws2_32
     user32
     kernel32
+    version
 )

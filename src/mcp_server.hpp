@@ -5,6 +5,7 @@
 #include <atomic>
 #include <memory>
 #include <mutex>
+#include <condition_variable>
 #include <unordered_map>
 #include "json.hpp"
 
@@ -31,6 +32,7 @@ namespace shadepilot
 
         // Tool handlers
         nlohmann::json tool_get_screen(const nlohmann::json &args);
+        nlohmann::json tool_list_effects(const nlohmann::json &args);
         nlohmann::json tool_list_techniques(const nlohmann::json &args);
         nlohmann::json tool_set_technique_state(const nlohmann::json &args);
         nlohmann::json tool_reorder_techniques(const nlohmann::json &args);
@@ -50,7 +52,10 @@ namespace shadepilot
         nlohmann::json tool_set_overlay_state(const nlohmann::json &args);
         nlohmann::json tool_list_addons(const nlohmann::json &args);
         nlohmann::json tool_set_addon_state(const nlohmann::json &args);
+        nlohmann::json tool_get_addon_config(const nlohmann::json &args);
+        nlohmann::json tool_set_addon_config(const nlohmann::json &args);
         nlohmann::json tool_get_config(const nlohmann::json &args);
+        nlohmann::json tool_get_all_config(const nlohmann::json &args);
         nlohmann::json tool_set_config(const nlohmann::json &args);
         nlohmann::json tool_get_stats(const nlohmann::json &args);
         nlohmann::json tool_get_logs(const nlohmann::json &args);
@@ -61,8 +66,10 @@ namespace shadepilot
         std::atomic<uint16_t> m_port{39800};
         std::thread m_worker_thread;
 
-        // Active SSE clients
+        // Active SSE clients & shutdown synchronization
         mutable std::mutex m_clients_mutex;
         std::atomic<size_t> m_client_counter{0};
+        std::condition_variable m_cv_shutdown;
+        std::mutex m_shutdown_mutex;
     };
 }

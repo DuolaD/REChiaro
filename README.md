@@ -76,26 +76,36 @@
 
 ## 🛠️ MCP Tools 接口矩阵
 
-ShadePilot 向 AI 大模型暴露了以下专业工具：
+ShadePilot 为 AI 智能体提供了完整且完备的控制接口矩阵，全面对齐 ReShade 各功能选项卡（主页 Home、插件 Add-ons、设置 Settings、统计与日志）：
 
-| 工具名称 | 描述 |
-| :--- | :--- |
-| `shadepilot_get_screen` | 获取当前游戏画面（可选 `before` 原始画质、`after` 特效画质、`both` 对比画质） |
-| `shadepilot_list_techniques` | 获取所有着色器技术名称、所属文件、当前开关状态与 UI 标签 |
-| `shadepilot_set_technique_state` | 启用或禁用指定的着色器技术 |
-| `shadepilot_reorder_techniques` | 调整着色器的渲染执行顺序 |
-| `shadepilot_list_variables` | 枚举着色器的全部 Uniform 变量（当前值、最大最小值、步长、类型及描述） |
-| `shadepilot_set_variable` | 更改指定着色器变量的值（支持数值、布尔与颜色向量） |
-| `shadepilot_reset_variable` | 重置指定变量为默认初始值 |
-| `shadepilot_get_preprocessor_definitions` | 查看预处理器宏定义 |
-| `shadepilot_set_preprocessor_definition` | 修改预处理器宏定义并触发着色器重新编译 |
-| `shadepilot_save_preset` | 将当前所有生效的参数和着色器状态保存到预设文件 |
-| `shadepilot_list_addons` | 获取已安装的全部 ReShade Add-on 插件列表及启用状态 |
-| `shadepilot_set_addon_state` | 启用或禁用指定的 ReShade 插件 |
-| `shadepilot_get_config` | 读取 `ReShade.ini` 的任意设置项 |
-| `shadepilot_set_config` | 写入或修改 `ReShade.ini` 设置 |
-| `shadepilot_get_stats` | 获取实时 FPS、单帧耗时、分辨率与图形 API 类型 |
-| `shadepilot_get_logs` | 获取最新运行日志，支持筛选错误告警（用于排查着色器编译失败） |
+| 分类 | 工具名称 | 描述与特性 |
+| :--- | :--- | :--- |
+| **画面感知** | `shadepilot_get_screen` | 捕获游戏画面。支持 `before`（特效前纯净画面）、`after`（特效后画面）、`overlay`（包含 ReShade 游戏内全菜单与调试界面的最终画面）及 `both`（在同一渲染帧内**原子捕获** Before/After，零撕裂与时差）。 |
+| **着色器 (图二)** | `shadepilot_list_effects` | 列出所有已安装与加载的着色器文件（`.fx`），包含文件全路径、编译成功状态、Technique 计数及错误日志。 |
+| | `shadepilot_list_techniques` | 枚举所有着色器技术（Technique）名称、所属文件、启用状态与 UI 标签。 |
+| | `shadepilot_set_technique_state` | 启用或禁用指定的着色器技术。 |
+| | `shadepilot_reorder_techniques` | 动态调整着色器的渲染执行先后顺序。 |
+| | `shadepilot_list_variables` | **对齐 ReShade 主页（Home tab）**：默认（`enabled_only=true`, `include_system=false`）仅枚举当前已启用着色器的调节参数（滑块、颜色、下拉项等），自动剔除系统只读时间/帧数变量，返回分类（`ui_category`）、数值范围、单位与步长。 |
+| | `shadepilot_set_variable` | 任意更改着色器参数值（支持浮点、整数、布尔、三维/四维向量），默认自动将修改落地持久化至当前激活的预设文件（`auto_save=true`）。 |
+| | `shadepilot_reset_variable` | 将指定着色器变量重置为其默认初始预设值。 |
+| | `shadepilot_get_preprocessor_definitions` | 查看着色器的预处理器宏定义（Macros）。 |
+| | `shadepilot_set_preprocessor_definition` | 修改预处理器宏定义并自动触发着色器下一帧热重载与编译。 |
+| | `shadepilot_reload_effects` | 立即将指定着色器或全部着色器放入重载队列，下一帧无缝重新编译。 |
+| **预设与状态** | `shadepilot_save_preset` | 将当前所有生效的参数和着色器状态保存到预设文件（`.ini`）。 |
+| | `shadepilot_load_preset` | 切换加载指定的 ReShade 预设文件并即时应用。 |
+| | `shadepilot_get_current_preset` | 获取当前正在生效的预设文件路径。 |
+| | `shadepilot_set_performance_mode` / `get` | 开关 ReShade 性能模式（Performance Mode），触发着色器优化编译。 |
+| | `shadepilot_set_effects_state` / `get` | 全局启用或禁用所有特效（等同于 ReShade 全局主开关快捷键）。 |
+| | `shadepilot_set_overlay_state` | 远控打开或关闭 ReShade 游戏内原生浮层菜单。 |
+| **插件 (图三)** | `shadepilot_list_addons` | **对齐 ReShade 插件页（Add-ons tab）**：遍历游戏根目录与 `addons/` 目录，扫描所有 `.addon` / `.addon64` 插件，返回插件名称、描述、作者、版本、网址及启用/禁用状态。 |
+| | `shadepilot_set_addon_state` | 启用或禁用指定的插件（在 `ReShade.ini` 的 `[ADDONS]` 中配置，下次游戏启动生效）。 |
+| | `shadepilot_get_addon_config` | **读取插件独立变量与配置**：读取 `ReShade.ini` 中属于该插件配置节（例如 `[DEPTH]`、`[OBS_CAPTURE]` 等）的全部键值对。 |
+| | `shadepilot_set_addon_config` | **任意更改插件独立配置**：直接修改指定插件在 `ReShade.ini` 中的配置项并立即持久化。 |
+| **设置与诊断** | `shadepilot_get_config` | 读取 `ReShade.ini` 中的单个配置项（如 `[OVERLAY] KeyOverlay`）。 |
+| | `shadepilot_get_all_config` | 完整读取 `ReShade.ini` 的所有 Section 与键值对，结构化解析为 JSON 对象。 |
+| | `shadepilot_set_config` | 任意修改 `ReShade.ini` 中的配置项并通知重载生效。 |
+| | `shadepilot_get_stats` | 获取实时 FPS、单帧毫秒耗时、分辨率、图形 API（DX11/DX12/Vulkan）、GPU 型号/设备ID、当前已激活 Techniques 数量与名称。 |
+| | `shadepilot_get_logs` | 获取最新 ReShade 运行日志（支持筛选 Warning/Error 或全文关键字检索）。 |
 
 ---
 
