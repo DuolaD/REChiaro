@@ -35,7 +35,7 @@ Pre-built binaries are available on the [Releases page](../../releases):
 
 ### Setup Steps
 
-1. Copy `ShadePilot.addon64` (or `ShadePilot.addon32`) into the game directory containing the main `.exe`, or into ReShade's `addons` folder.
+1. Place `ShadePilot.addon64` (or `ShadePilot.addon32`) in the location specified in your ReShade configuration.
 2. Launch the game and press the ReShade overlay key (default is `Home`).
 3. Switch to the **Add-ons** tab to verify that **ShadePilot** is loaded.
 4. ShadePilot automatically starts its local HTTP/SSE server on port `39800`.

@@ -35,7 +35,7 @@ ShadePilot 是一个运行在 ReShade 内部的 Model Context Protocol (MCP) 插
 
 ### 安装步骤
 
-1. 将 `ShadePilot.addon64`（或 `ShadePilot.addon32`）复制到游戏主程序（`.exe`）所在目录，或复制到 ReShade 的 `addons` 文件夹下。
+1. 将 `ShadePilot.addon64`（或 `ShadePilot.addon32`）放置在 ReShade 配置文件中的指定位置。
 2. 启动游戏，按快捷键（默认 `Home` 键）打开 ReShade 菜单。
 3. 切换到 **“插件 (Add-ons)”** 页面，可以看到 **ShadePilot** 已被识别并加载。
 4. 插件启动后会自动在后台运行本地 HTTP/SSE 服务，默认监听端口为 `39800`。
