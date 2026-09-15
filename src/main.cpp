@@ -12,7 +12,7 @@
 extern "C" __declspec(dllexport) const char *NAME = "REChiaro";
 extern "C" __declspec(dllexport) const char *DESCRIPTION = "Model Context Protocol (MCP) server for ReShade, empowering AI to observe and control shaders, presets, and settings.";
 extern "C" __declspec(dllexport) const char *AUTHOR = "DuolaD";
-extern "C" __declspec(dllexport) const char *WEBSITE = "https://github.com/DuolaD/RE_MCP";
+extern "C" __declspec(dllexport) const char *WEBSITE = "https://github.com/DuolaD/REChiaro";
 
 static int s_input_port = 39800;
 static bool s_port_initialized = false;

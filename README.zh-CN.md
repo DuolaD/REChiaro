@@ -2,7 +2,7 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md) | [繁體中文](README.zh-TW.md)
 
-[![Release REChiaro Addon](https://github.com/DuolaD/RE_MCP/actions/workflows/release.yml/badge.svg)](https://github.com/DuolaD/RE_MCP/actions/workflows/release.yml)
+[![Release REChiaro Addon](https://github.com/DuolaD/REChiaro/actions/workflows/release.yml/badge.svg)](https://github.com/DuolaD/REChiaro/actions/workflows/release.yml)
 [![ReShade API v20](https://img.shields.io/badge/ReShade_API-v20-brightgreen.svg)](https://reshade.me)
 [![MCP Protocol](https://img.shields.io/badge/MCP-2024--11--05-blue.svg)](https://modelcontextprotocol.io)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
